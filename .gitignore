@@ -1,0 +1,32 @@
+# Large data files (not in git)
+*.tar.bz2
+*.tar.gz
+*.tar
+
+# Extracted data directories
+xml/
+crossref.csv
+all_doi.csv
+
+# Generated data
+labeled_data.json
+labeled_progress.jsonl
+test_labeled.json
+test_progress.jsonl
+embeddings/
+*.npy
+*.pkl
+*.parquet
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# History files (contain commands, not needed)
+hist.txt
+hist_crossref.txt
+
+# OS
+.DS_Store
