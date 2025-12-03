@@ -4,7 +4,7 @@ Predict which journal a medRxiv preprint will be published in based on its conte
 
 ## Goal
 
-Build a system where users can say "show me the 20 preprints from the last 2 months that most look like Lancet articles" - reverse-engineering journal gatekeeping to democratize quality assessment.
+Build a system where users can say "show me the 20 preprints from the last 2 months that most look like Lancet articles" - reverse-engineering journal gatekeeping to democratise quality assessment.
 
 ## Approach
 
@@ -26,16 +26,16 @@ Large data files (~3GB compressed) stored separately:
 - `crossref.tar.bz2` - 167M Crossref records
 - `all_doi.tar.bz2` - DOI mappings
 
-See `hist.txt` and `hist_crossref.txt` for download commands.
+See [DATA_ACQUISITION.md](DATA_ACQUISITION.md) for instructions on obtaining the data.
 
 ## Scripts
 
-- `extract_labeled_data.py` - Build labeled dataset from medRxiv + Crossref APIs
+- `extract_labeled_data.py` - Build labelled dataset from medRxiv + Crossref APIs
 
 ## Usage
 
 ```bash
-# Extract labeled dataset (preprints with known journal destinations)
+# Extract labelled dataset (preprints with known journal destinations)
 python3 extract_labeled_data.py --start-date 2024-01-01 --end-date 2024-06-30
 
 # Full extraction for all available data
