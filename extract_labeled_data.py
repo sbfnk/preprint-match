@@ -109,10 +109,17 @@ def build_labeled_dataset(preprints: list, progress_file: Optional[str] = None) 
                 seen_dois.add(record['preprint_doi'])
         print(f"Loaded {len(labeled)} existing records", file=sys.stderr)
 
-    # Filter to preprints with published DOIs
-    published = [(p['doi'], p['published'], p) for p in preprints
-                 if p.get('published') and p['published'] != 'NA'
-                 and p['doi'] not in seen_dois]
+    # Filter to preprints with published DOIs, deduplicate by preprint DOI
+    # (API returns all versions, we only need latest with published info)
+    # Also filter by DOI year if doi_year_filter is set
+    published_dict = {}
+    for p in preprints:
+        if p.get('published') and p['published'] != 'NA' and p['doi'] not in seen_dois:
+            # Keep the entry (later versions overwrite earlier ones)
+            published_dict[p['doi']] = (p['doi'], p['published'], p)
+
+    published = list(published_dict.values())
+    print(f"  Total unique published: {len(published)}", file=sys.stderr)
 
     print(f"Found {len(published)} published preprints to process", file=sys.stderr)
 
@@ -159,11 +166,18 @@ def main():
     parser.add_argument('--output', default='labeled_data.json', help='Output file')
     parser.add_argument('--max-preprints', type=int, help='Max preprints to fetch')
     parser.add_argument('--progress-file', default='labeled_progress.jsonl', help='Progress file for resuming')
+    parser.add_argument('--doi-year', help='Filter to DOIs from this year (e.g., 2024)')
     args = parser.parse_args()
 
     print(f"Fetching preprints from {args.start_date} to {args.end_date}...", file=sys.stderr)
     preprints = fetch_medrxiv_preprints(args.start_date, args.end_date, args.max_preprints)
     print(f"Fetched {len(preprints)} preprints", file=sys.stderr)
+
+    # Filter by DOI year if specified (DOI format: 10.1101/YYYY.MM.DD.XXXXXXXX)
+    if args.doi_year:
+        pattern = f"10.1101/{args.doi_year}"
+        preprints = [p for p in preprints if p['doi'].startswith(pattern)]
+        print(f"Filtered to {len(preprints)} preprints from {args.doi_year}", file=sys.stderr)
 
     # Count published
     published_count = sum(1 for p in preprints if p.get('published') and p['published'] != 'NA')
