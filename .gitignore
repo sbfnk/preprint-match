@@ -1,4 +1,4 @@
-# Large data files (not in git)
+# Large data files
 *.tar.bz2
 *.tar.gz
 *.tar
@@ -11,7 +11,7 @@ all_doi.csv
 # Generated data
 labeled_data.json
 labeled_*.json
-labeled_*_progress.jsonl
+labeled_progress*.jsonl
 test_labeled.json
 test_progress.jsonl
 doi_to_xml.json
@@ -20,7 +20,24 @@ embeddings/
 *.npz
 *.pkl
 *.parquet
-knn_results.json
+*.joblib
+
+# Evaluation results (regenerated from pipeline)
+knn_results*.json
+classifier_results*.json
+ensemble_results*.json
+calibration_results*.json
+
+# Fine-tuned models
+finetuned-specter2/
+finetuned-specter2-v2/
+
+# Saved model and predictions
+model/
+model-v2/
+predictions/
+refresh_state.json
+meca/
 
 # Python
 __pycache__/
@@ -28,7 +45,7 @@ __pycache__/
 .venv/
 venv/
 
-# History files (contain commands, not needed)
+# History files
 hist.txt
 hist_crossref.txt
 

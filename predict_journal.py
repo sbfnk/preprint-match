@@ -26,6 +26,7 @@ import sys
 from pathlib import Path
 from collections import Counter
 
+import joblib
 import numpy as np
 from scipy.optimize import minimize_scalar
 from sklearn.isotonic import IsotonicRegression
@@ -148,50 +149,57 @@ class JournalPredictor:
 
         # Train model
         print("Training model...", file=sys.stderr)
-        train_emb = self.embeddings[train_idx]
+        self.train_emb = self.embeddings[train_idx]
         val_emb = self.embeddings[val_idx]
         test_emb = self.embeddings[test_idx]
         pool_emb = self.embeddings[self.pool_idx]
 
-        train_cats = [self.categories[i] for i in train_idx]
+        self.train_categories = [self.categories[i] for i in train_idx]
         val_cats = [self.categories[i] for i in val_idx]
         test_cats = [self.categories[i] for i in test_idx]
         pool_cats = [self.categories[i] for i in self.pool_idx]
-        unique_cats = sorted(set(train_cats))
-        cat_to_idx = {c: i + 1 for i, c in enumerate(unique_cats)}
+        self.unique_cats = sorted(set(self.train_categories))
+        self.cat_to_idx = {c: i + 1 for i, c in enumerate(self.unique_cats)}
+        self.k = k
 
         # kNN
         print("  kNN...", file=sys.stderr)
-        val_sim = cosine_similarity_chunked(val_emb, train_emb)
-        knn_preds_val = predict_knn(val_sim, self.train_journals, k=k)
-        test_sim = cosine_similarity_chunked(test_emb, train_emb)
-        knn_preds_test = predict_knn(test_sim, self.train_journals, k=k)
-        pool_sim = cosine_similarity_chunked(pool_emb, train_emb)
-        knn_preds_pool = predict_knn(pool_sim, self.train_journals, k=k)
+        val_sim = cosine_similarity_chunked(val_emb, self.train_emb)
+        knn_preds_val = predict_knn(val_sim, self.train_journals, k=self.k)
+        test_sim = cosine_similarity_chunked(test_emb, self.train_emb)
+        knn_preds_test = predict_knn(test_sim, self.train_journals, k=self.k)
+        pool_sim = cosine_similarity_chunked(pool_emb, self.train_emb)
+        knn_preds_pool = predict_knn(pool_sim, self.train_journals, k=self.k)
 
         # Classifier
         print("  Classifier...", file=sys.stderr)
-        X_train = build_feature_matrix(train_emb, train_cats, cat_to_idx, True)
-        X_val = build_feature_matrix(val_emb, val_cats, cat_to_idx, True)
-        X_test = build_feature_matrix(test_emb, test_cats, cat_to_idx, True)
-        X_pool = build_feature_matrix(pool_emb, pool_cats, cat_to_idx, True)
+        X_train = build_feature_matrix(
+            self.train_emb, self.train_categories, self.cat_to_idx, True)
+        X_val = build_feature_matrix(val_emb, val_cats, self.cat_to_idx, True)
+        X_test = build_feature_matrix(
+            test_emb, test_cats, self.cat_to_idx, True)
+        X_pool = build_feature_matrix(
+            pool_emb, pool_cats, self.cat_to_idx, True)
 
-        label_encoder = LabelEncoder()
-        y_train = label_encoder.fit_transform(self.train_journals)
-        self.all_classes = label_encoder.classes_
+        self.label_encoder = LabelEncoder()
+        y_train = self.label_encoder.fit_transform(self.train_journals)
+        self.all_classes = self.label_encoder.classes_
 
-        clf = LogisticRegression(
+        self.clf = LogisticRegression(
             C=1.0, solver="lbfgs", max_iter=200, random_state=seed)
-        clf.fit(X_train, y_train)
+        self.clf.fit(X_train, y_train)
 
         # Ensemble probability matrices
         print("  Ensemble probabilities...", file=sys.stderr)
         proba_val_full = ensemble_proba_matrix(
-            knn_preds_val, clf.predict_proba(X_val), self.all_classes, alpha)
+            knn_preds_val, self.clf.predict_proba(X_val),
+            self.all_classes, alpha)
         proba_test_full = ensemble_proba_matrix(
-            knn_preds_test, clf.predict_proba(X_test), self.all_classes, alpha)
+            knn_preds_test, self.clf.predict_proba(X_test),
+            self.all_classes, alpha)
         self.proba_pool_full = ensemble_proba_matrix(
-            knn_preds_pool, clf.predict_proba(X_pool), self.all_classes, alpha)
+            knn_preds_pool, self.clf.predict_proba(X_pool),
+            self.all_classes, alpha)
 
         # Restrict to eligible journals
         self.eligible_mask = np.array([
@@ -254,23 +262,12 @@ class JournalPredictor:
             y_min=0.0, y_max=1.0, out_of_bounds='clip')
         self.iso_reg.fit(iso_probs, iso_labels)
 
-        # Apply isotonic calibration + renormalize
-        def calibrate_matrix(proba_ts):
-            """Apply isotonic regression to each probability, then renormalise."""
-            flat = proba_ts.ravel()
-            cal_flat = self.iso_reg.predict(flat)
-            cal = cal_flat.reshape(proba_ts.shape)
-            # Renormalize rows to sum to 1
-            row_sums = cal.sum(axis=1, keepdims=True)
-            row_sums = np.maximum(row_sums, 1e-30)
-            return cal / row_sums
-
-        proba_val_cal = calibrate_matrix(proba_val_ts)
-        proba_test_cal = calibrate_matrix(proba_test_ts)
+        proba_val_cal = self._apply_isotonic(proba_val_ts)
+        proba_test_cal = self._apply_isotonic(proba_test_ts)
 
         # Calibrate pool
         proba_pool_ts = temperature_scale(self.proba_pool, self.T)
-        self.proba_pool = calibrate_matrix(proba_pool_ts)
+        self.proba_pool = self._apply_isotonic(proba_pool_ts)
 
         # Calibration metrics — compare before and after
         bins_val_before = reliability_diagram(proba_val_ts, val_true)
@@ -331,6 +328,155 @@ class JournalPredictor:
                     self.titles[doi] = paper.get("title", "(no title)")
 
         print("Ready.\n", file=sys.stderr)
+
+    def _apply_isotonic(self, proba_ts):
+        """Apply isotonic calibration to probability matrix and renormalise."""
+        flat = proba_ts.ravel().copy()
+        cal_flat = self.iso_reg.predict(flat)
+        cal = cal_flat.reshape(proba_ts.shape)
+        row_sums = cal.sum(axis=1, keepdims=True)
+        return cal / np.maximum(row_sums, 1e-30)
+
+    def save(self, model_dir="model"):
+        """Serialise trained model to disk for inference without retraining."""
+        model_dir = Path(model_dir)
+        model_dir.mkdir(parents=True, exist_ok=True)
+
+        # Classifier and isotonic calibration
+        joblib.dump(self.clf, model_dir / "classifier.joblib")
+        joblib.dump(self.iso_reg, model_dir / "isotonic.joblib")
+
+        # Training embeddings for kNN
+        np.savez_compressed(
+            model_dir / "train_embeddings.npz",
+            embeddings=self.train_emb)
+
+        # Config: scalars, lists, and mappings
+        config = {
+            "alpha": self.alpha,
+            "k": self.k,
+            "T": self.T,
+            "min_papers": self.min_papers,
+            "seed": self.seed,
+            "train_journals": self.train_journals,
+            "train_categories": self.train_categories,
+            "eligible_journals": self.eligible_journals,
+            "all_classes": self.all_classes.tolist(),
+            "unique_cats": self.unique_cats,
+            "cat_to_idx": self.cat_to_idx,
+        }
+        with open(model_dir / "config.json", "w") as f:
+            json.dump(config, f, indent=2)
+
+        print(f"Model saved to {model_dir}/", file=sys.stderr)
+
+    @classmethod
+    def load(cls, model_dir="model", dataset_path="labeled_dataset.json"):
+        """Load a saved model for inference, bypassing __init__ training."""
+        model_dir = Path(model_dir)
+
+        # Create bare instance without calling __init__
+        obj = cls.__new__(cls)
+
+        # Load config
+        with open(model_dir / "config.json") as f:
+            config = json.load(f)
+
+        obj.alpha = config["alpha"]
+        obj.k = config["k"]
+        obj.T = config["T"]
+        obj.min_papers = config["min_papers"]
+        obj.seed = config["seed"]
+        obj.train_journals = config["train_journals"]
+        obj.eligible_journals = config["eligible_journals"]
+        obj.all_classes = np.array(config["all_classes"])
+        obj.unique_cats = config["unique_cats"]
+        obj.cat_to_idx = config["cat_to_idx"]
+        obj.journal_counts = Counter(obj.train_journals)
+
+        # Load classifier and calibration (label_encoder not needed for inference)
+        obj.clf = joblib.load(model_dir / "classifier.joblib")
+        obj.iso_reg = joblib.load(model_dir / "isotonic.joblib")
+        obj.label_encoder = None
+
+        # Load training embeddings
+        data = np.load(model_dir / "train_embeddings.npz")
+        obj.train_emb = data["embeddings"]
+
+        # Rebuild derived mappings
+        obj.eligible_mask = np.array([
+            j in set(obj.eligible_journals) for j in obj.all_classes])
+        obj.restricted_classes = obj.all_classes[obj.eligible_mask]
+        obj.restricted_class_to_idx = {
+            c: i for i, c in enumerate(obj.restricted_classes)}
+
+        # Load titles
+        obj.titles = {}
+        if Path(dataset_path).exists():
+            with open(dataset_path) as f:
+                for paper in json.load(f):
+                    doi = paper.get("preprint_doi", "")
+                    obj.titles[doi] = paper.get("title", "(no title)")
+
+        print(f"Model loaded from {model_dir}/  "
+              f"({len(obj.eligible_journals)} eligible journals, "
+              f"{obj.train_emb.shape[0]} training papers)",
+              file=sys.stderr)
+
+        return obj
+
+    def predict_new(self, embeddings, categories, dois=None, titles=None,
+                    top_k=10):
+        """Score new papers against the saved model.
+
+        Args:
+            embeddings: (n_papers, embedding_dim) array
+            categories: list of medRxiv category strings
+            dois: optional list of DOIs
+            titles: optional list of titles
+
+        Returns:
+            list of dicts with doi, title, predictions [(journal, prob), ...]
+        """
+        n = embeddings.shape[0]
+
+        # kNN
+        sim = cosine_similarity_chunked(embeddings, self.train_emb)
+        knn_preds = predict_knn(sim, self.train_journals, k=self.k)
+
+        # Classifier
+        X = build_feature_matrix(
+            embeddings, categories, self.cat_to_idx, True)
+        clf_proba = self.clf.predict_proba(X)
+
+        # Ensemble
+        proba_full = ensemble_proba_matrix(
+            knn_preds, clf_proba, self.all_classes, self.alpha)
+
+        # Restrict to eligible journals + renormalise
+        proba = restrict_and_renormalize(proba_full, self.eligible_mask)
+
+        # Calibrate: temperature scaling + isotonic
+        proba = temperature_scale(proba, self.T)
+        proba = self._apply_isotonic(proba)
+
+        # Build results
+        top_k = min(top_k, len(self.restricted_classes))
+        results = []
+        for i in range(n):
+            top_indices = np.argsort(proba[i])[::-1][:top_k]
+            predictions = [
+                (self.restricted_classes[idx], float(proba[i, idx]))
+                for idx in top_indices
+            ]
+            entry = {
+                "doi": dois[i] if dois is not None else f"paper_{i}",
+                "title": titles[i] if titles is not None else "(no title)",
+                "predictions": predictions,
+            }
+            results.append(entry)
+
+        return results
 
     def predict(self, doi=None, pool_index=None, top_k=10):
         """Get calibrated journal predictions for a paper.

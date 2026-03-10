@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}{{ (paper.title | fix_title)[:60] }} — medRxiv Predictions{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 fade-in">
+    <!-- Back link -->
+    <a href="javascript:history.back()" class="inline-flex items-center text-sm text-surface-500 dark:text-surface-300 hover:text-brand-600 dark:hover:text-brand-400 mb-6 transition-colors">
+        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+        </svg>
+        Back
+    </a>
+
+    <!-- Paper header -->
+    <div class="bg-white dark:bg-surface-800 rounded-2xl border border-surface-200 dark:border-surface-600 p-8 mb-8 shadow-sm">
+        <h1 class="text-2xl font-bold text-surface-900 dark:text-white leading-snug mb-3">{{ paper.title | fix_title }}</h1>
+
+        <div class="flex flex-wrap gap-3 text-sm text-surface-600 dark:text-surface-200 mb-4">
+            {% if paper.date %}
+            <span class="inline-flex items-center">
+                <svg class="w-4 h-4 mr-1 text-surface-400 dark:text-surface-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                </svg>
+                {{ paper.date }}
+            </span>
+            {% endif %}
+            {% if paper.category %}
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-brand-100 dark:bg-brand-600/20 text-brand-600 dark:text-brand-300">
+                {{ paper.category }}
+            </span>
+            {% endif %}
+            {% if paper.has_fulltext %}
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
+                Full text
+            </span>
+            {% else %}
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400">
+                Title + abstract only
+            </span>
+            {% endif %}
+        </div>
+
+        <a href="{{ paper.doi | doi_url }}" target="_blank" rel="noopener"
+           class="inline-flex items-center text-brand-600 dark:text-brand-400 hover:text-brand-500 dark:hover:text-brand-300 text-sm font-medium transition-colors">
+            View on medRxiv
+            <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+            </svg>
+        </a>
+
+        {% if paper.abstract %}
+        <details class="mt-4">
+            <summary class="text-sm text-surface-500 dark:text-surface-300 cursor-pointer hover:text-brand-600 dark:hover:text-brand-400 transition-colors">
+                Show abstract
+            </summary>
+            <p class="mt-3 text-sm text-surface-600 dark:text-surface-200 leading-relaxed max-w-3xl">
+                {{ paper.abstract }}
+            </p>
+        </details>
+        {% endif %}
+    </div>
+
+    <!-- Predicted journals -->
+    <h2 class="text-xl font-semibold text-surface-900 dark:text-white mb-4">Predicted journal destinations</h2>
+
+    {% if predictions %}
+    <div class="bg-white dark:bg-surface-800 rounded-2xl border border-surface-200 dark:border-surface-700 overflow-hidden shadow-sm">
+        {% for pred in predictions %}
+        {% if pred.probability >= 0.005 or loop.index <= 10 %}
+        <a href="/journal/{{ pred.journal }}"
+           class="flex items-center gap-4 px-6 py-4 border-b border-surface-200 dark:border-surface-700 last:border-0
+                  hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors group">
+            <!-- Rank -->
+            <div class="flex-shrink-0 w-8 text-center">
+                <span class="text-sm font-bold
+                    {% if loop.index <= 3 %}text-brand-600 dark:text-brand-400{% else %}text-surface-400 dark:text-surface-400{% endif %}">
+                    {{ pred.rank }}
+                </span>
+            </div>
+
+            <!-- Journal name -->
+            <div class="flex-1 min-w-0">
+                <div class="font-medium text-surface-800 dark:text-surface-100 group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors truncate">
+                    {{ pred.journal }}
+                </div>
+                <div class="text-xs text-surface-500 dark:text-surface-400">
+                    {{ pred.training_papers }} training papers
+                </div>
+            </div>
+
+            <!-- Percentile + probability -->
+            <div class="flex items-center gap-3 flex-shrink-0 w-56">
+                <div class="flex-1 bg-surface-200 dark:bg-surface-600 rounded-full h-2 overflow-hidden"
+                     title="Percentile rank among all preprints for {{ pred.journal }}">
+                    <div class="prob-bar h-full rounded-full"
+                         style="width: {{ pred.percentile }}%">
+                    </div>
+                </div>
+                <span class="text-sm font-bold w-16 text-right cursor-help
+                    {% if pred.percentile >= 99 %}text-brand-500 dark:text-brand-300{% elif pred.percentile >= 95 %}text-brand-600 dark:text-brand-400{% else %}text-surface-500 dark:text-surface-300{% endif %}"
+                    title="Percentile rank: this paper scores higher than {{ pred.percentile | round(1) }}% of all preprints for {{ pred.journal }}">
+                    {{ pred.percentile | top_pct }}
+                </span>
+                <span class="text-xs text-surface-400 dark:text-surface-400 w-10 text-right cursor-help"
+                    title="Model probability: the predicted chance ({{ pred.probability | pct }}) that this preprint will be published in {{ pred.journal }}">
+                    {{ pred.probability | pct }}
+                </span>
+            </div>
+        </a>
+        {% endif %}
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="bg-white dark:bg-surface-800 rounded-xl border border-surface-200 dark:border-surface-700 p-12 text-center">
+        <p class="text-surface-400">No predictions available for this paper.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
