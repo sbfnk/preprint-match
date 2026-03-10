@@ -1,5 +1,7 @@
 # Journal Prediction from medRxiv Preprints: Methodology and Results
 
+> **Note**: These results are from the v1 dataset (25,182 papers). The current model (v2) uses 35,366 papers with the same methodology. The approach and conclusions are unchanged; absolute numbers will differ slightly.
+
 ## Problem
 
 Given a medRxiv preprint, predict which journal it will ultimately be published in. The dataset contains 25,182 labelled preprints spanning 3,645 distinct journals — an extreme multi-class classification problem with heavy class imbalance (the most common journal, PLOS ONE, has ~1,200 papers; 1,672 journals appear only once).

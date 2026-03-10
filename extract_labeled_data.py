@@ -31,14 +31,21 @@ def fetch_medrxiv_preprints(start_date: str, end_date: str, max_records: Optiona
     batch_size = 100  # API returns max 100 per request
 
     while True:
-        url = f"https://api.medrxiv.org/details/medrxiv/{start_date}/{end_date}?cursor={cursor}"
+        url = f"https://api.medrxiv.org/details/medrxiv/{start_date}/{end_date}/{cursor}"
         print(f"Fetching medRxiv cursor={cursor}...", file=sys.stderr)
 
-        try:
-            with urllib.request.urlopen(url, timeout=30) as response:
-                data = json.load(response)
-        except urllib.error.URLError as e:
-            print(f"Error fetching medRxiv: {e}", file=sys.stderr)
+        data = None
+        for attempt in range(3):
+            try:
+                with urllib.request.urlopen(url, timeout=60) as response:
+                    data = json.load(response)
+                break
+            except (urllib.error.URLError, TimeoutError, OSError) as e:
+                print(f"Attempt {attempt + 1}/3 failed: {e}", file=sys.stderr)
+                if attempt < 2:
+                    time.sleep(2 ** attempt)
+        if data is None:
+            print(f"Failed to fetch cursor={cursor} after 3 attempts", file=sys.stderr)
             break
 
         batch = data.get('collection', [])

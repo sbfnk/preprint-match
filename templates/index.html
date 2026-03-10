@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+
+{% block body %}
+<!-- Full-page hero with search — no nav bar on home -->
+<div class="gradient-bg min-h-[60vh] flex flex-col">
+    <!-- Minimal top bar -->
+    <div class="max-w-6xl mx-auto w-full px-4 sm:px-6 lg:px-8 pt-6">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-2.5">
+                <div class="w-8 h-8 glass rounded-lg flex items-center justify-center">
+                    <svg class="w-5 h-5 text-brand-700 dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                    </svg>
+                </div>
+                <span class="text-lg font-bold text-surface-900 dark:text-white tracking-tight">Preprint Match</span>
+            </div>
+            <span class="text-xs text-surface-500 dark:text-white/40 font-mono hidden sm:block">
+                {{ meta.n_papers }} papers &middot; {{ meta.n_journals }} journals
+            </span>
+        </div>
+    </div>
+
+    <!-- Hero content -->
+    <div class="flex-1 flex flex-col items-center justify-center px-4 pb-16">
+        <h1 class="text-4xl sm:text-5xl font-extrabold text-surface-900 dark:text-white mb-3 tracking-tight text-center">
+            Where will it be published?
+        </h1>
+        <p class="text-lg text-surface-500 dark:text-white/60 mb-10 max-w-lg mx-auto text-center font-light">
+            Predicting journal destinations for medRxiv preprints
+        </p>
+
+        <!-- Search -->
+        <div class="w-full max-w-2xl relative">
+            <div class="relative">
+                <svg class="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-surface-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
+                <input
+                    type="text"
+                    id="search-box"
+                    placeholder="Search journals, paper titles, or paste a DOI..."
+                    autocomplete="off"
+                    spellcheck="false"
+                    class="w-full pl-14 pr-5 py-5 text-lg rounded-2xl border
+                           border-surface-300 bg-white text-surface-900
+                           dark:border-surface-600 dark:bg-surface-800 dark:text-white
+                           focus:outline-none search-glow
+                           placeholder-surface-400 dark:placeholder-surface-500
+                           shadow-xl shadow-black/5 dark:shadow-black/30"
+                >
+            </div>
+
+            <!-- Results dropdown -->
+            <div id="search-results" class="absolute w-full mt-2 bg-white dark:bg-surface-800 rounded-2xl shadow-2xl shadow-black/10 dark:shadow-black/30 border border-surface-200 dark:border-surface-600 overflow-hidden hidden z-50 max-h-[60vh] overflow-y-auto">
+            </div>
+        </div>
+
+        <!-- Quick links -->
+        <div class="mt-6 flex flex-wrap gap-2 justify-center">
+            <span class="text-surface-400 dark:text-white/30 text-sm mr-1 self-center">Try:</span>
+            {% for name in ["The Lancet Infectious Diseases", "PLOS Computational Biology", "BMJ", "Nature Medicine"] %}
+            <a href="/journal/{{ name }}?days=30"
+               class="glass text-surface-600 dark:text-white/70 hover:text-surface-900 dark:hover:text-white hover:bg-white/80 dark:hover:bg-white/15 px-3 py-1.5 rounded-full text-sm transition-all">
+                {{ name }}
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Stats -->
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 relative z-10">
+    <div class="grid grid-cols-3 gap-4">
+        <div class="bg-white dark:bg-surface-800 rounded-xl p-5 border border-surface-200 dark:border-surface-700 text-center shadow-sm">
+            <div class="text-2xl font-bold text-brand-600 dark:text-brand-400">{{ meta.n_papers }}</div>
+            <div class="text-xs text-surface-500 dark:text-surface-400 mt-0.5">Preprints scored</div>
+        </div>
+        <div class="bg-white dark:bg-surface-800 rounded-xl p-5 border border-surface-200 dark:border-surface-700 text-center shadow-sm">
+            <div class="text-2xl font-bold text-brand-600 dark:text-brand-400">{{ n_journals }}</div>
+            <div class="text-xs text-surface-500 dark:text-surface-400 mt-0.5">Target journals</div>
+        </div>
+        <div class="bg-white dark:bg-surface-800 rounded-xl p-5 border border-surface-200 dark:border-surface-700 text-center shadow-sm">
+            <div class="text-2xl font-bold text-brand-600 dark:text-brand-400">{{ "{:,}".format(meta.n_papers * n_journals) }}</div>
+            <div class="text-xs text-surface-500 dark:text-surface-400 mt-0.5">Predictions</div>
+        </div>
+    </div>
+</div>
+
+<!-- Footer -->
+<footer class="border-t border-surface-200 dark:border-surface-700 mt-20">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div class="flex flex-col sm:flex-row justify-between items-center gap-3">
+            <p class="text-xs text-surface-400">
+                Based on {{ meta.n_papers }} medRxiv preprints
+                ({{ meta.date_range[0] }} &ndash; {{ meta.date_range[1] }})
+            </p>
+            <p class="text-xs text-surface-400">
+                Updated {{ meta.last_updated[:10] }}
+            </p>
+        </div>
+    </div>
+</footer>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const searchBox = document.getElementById('search-box');
+const searchResults = document.getElementById('search-results');
+let debounceTimer;
+let activeIndex = -1;
+let currentItems = [];
+
+function highlightMatch(text, query) {
+    const idx = text.toLowerCase().indexOf(query.toLowerCase());
+    if (idx === -1) return text;
+    return text.slice(0, idx)
+         + '<mark>' + text.slice(idx, idx + query.length) + '</mark>'
+         + text.slice(idx + query.length);
+}
+
+function renderResults(data, query) {
+    activeIndex = -1;
+    currentItems = [];
+
+    if (data.journals.length === 0 && data.papers.length === 0) {
+        searchResults.innerHTML = '<div class="px-5 py-4 text-sm text-surface-400">No results found</div>';
+        searchResults.classList.remove('hidden');
+        return;
+    }
+
+    let html = '';
+
+    if (data.journals.length > 0) {
+        html += '<div class="px-5 pt-3 pb-1 text-[10px] font-semibold text-surface-400 uppercase tracking-widest">Journals</div>';
+        data.journals.forEach((j, i) => {
+            const idx = currentItems.length;
+            currentItems.push({ type: 'journal', href: `/journal/${encodeURIComponent(j.name)}?days=30` });
+            html += `
+                <a href="/journal/${encodeURIComponent(j.name)}?days=30"
+                   data-idx="${idx}"
+                   class="search-item flex items-center gap-3 px-5 py-3 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors cursor-pointer">
+                    <div class="w-8 h-8 rounded-lg bg-brand-100 dark:bg-brand-600/20 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-4 h-4 text-brand-600 dark:text-brand-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                        </svg>
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <div class="font-medium text-surface-900 dark:text-surface-100 truncate">${highlightMatch(j.name, query)}</div>
+                        <div class="text-xs text-surface-500 dark:text-surface-400">${j.training_papers} training papers</div>
+                    </div>
+                    <svg class="w-4 h-4 text-surface-300 dark:text-surface-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                    </svg>
+                </a>`;
+        });
+    }
+
+    if (data.papers.length > 0) {
+        html += '<div class="px-5 pt-3 pb-1 text-[10px] font-semibold text-surface-400 uppercase tracking-widest border-t border-surface-200 dark:border-surface-600">Papers</div>';
+        data.papers.forEach((p, i) => {
+            const idx = currentItems.length;
+            currentItems.push({ type: 'paper', href: `/paper/${encodeURIComponent(p.doi)}` });
+            html += `
+                <a href="/paper/${encodeURIComponent(p.doi)}"
+                   data-idx="${idx}"
+                   class="search-item flex items-center gap-3 px-5 py-3 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors cursor-pointer">
+                    <div class="w-8 h-8 rounded-lg bg-surface-100 dark:bg-surface-600 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-4 h-4 text-surface-500 dark:text-surface-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                        </svg>
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <div class="font-medium text-surface-900 dark:text-surface-100 text-sm truncate">${highlightMatch(p.title, query)}</div>
+                        <div class="text-xs text-surface-500 dark:text-surface-400">${p.category} &middot; ${p.date}</div>
+                    </div>
+                </a>`;
+        });
+    }
+
+    searchResults.innerHTML = html;
+    searchResults.classList.remove('hidden');
+}
+
+function updateActive() {
+    searchResults.querySelectorAll('.search-item').forEach((el, i) => {
+        const idx = parseInt(el.dataset.idx);
+        el.classList.toggle('bg-surface-100', idx === activeIndex);
+        el.classList.toggle('dark:bg-surface-700', idx === activeIndex);
+    });
+}
+
+searchBox.addEventListener('input', function() {
+    clearTimeout(debounceTimer);
+    const q = this.value.trim();
+    if (q.length < 1) {
+        searchResults.classList.add('hidden');
+        return;
+    }
+    debounceTimer = setTimeout(() => {
+        fetch(`/api/search?q=${encodeURIComponent(q)}`)
+            .then(r => r.json())
+            .then(data => renderResults(data, q));
+    }, 100);
+});
+
+searchBox.addEventListener('keydown', function(e) {
+    if (!currentItems.length) return;
+
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        activeIndex = Math.min(activeIndex + 1, currentItems.length - 1);
+        updateActive();
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        activeIndex = Math.max(activeIndex - 1, 0);
+        updateActive();
+    } else if (e.key === 'Enter') {
+        e.preventDefault();
+        const target = activeIndex >= 0 ? currentItems[activeIndex] : currentItems[0];
+        if (target) window.location.href = target.href;
+    } else if (e.key === 'Escape') {
+        searchResults.classList.add('hidden');
+    }
+});
+
+searchBox.addEventListener('blur', () => {
+    setTimeout(() => searchResults.classList.add('hidden'), 200);
+});
+searchBox.addEventListener('focus', () => {
+    if (searchBox.value.trim().length >= 1) {
+        searchBox.dispatchEvent(new Event('input'));
+    }
+});
+
+// Auto-focus search on page load
+searchBox.focus();
+</script>
+{% endblock %}
