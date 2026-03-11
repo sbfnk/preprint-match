@@ -23,9 +23,10 @@ def main():
     parser.add_argument("--model-dir", default="model",
                         help="Directory to save model artefacts (default: model)")
     parser.add_argument("--embeddings-dir",
-                        default="finetuned-specter2/embeddings")
+                        default="finetuned-specter2-v2-hardneg/embeddings")
     parser.add_argument("--dataset", default="labeled_dataset.json")
     parser.add_argument("--alpha", type=float, default=0.1)
+    parser.add_argument("--classifier-C", type=float, default=10.0)
     parser.add_argument("--min-papers", type=int, default=10)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
@@ -36,6 +37,7 @@ def main():
         embeddings_dir=args.embeddings_dir,
         dataset_path=args.dataset,
         alpha=args.alpha,
+        classifier_C=args.classifier_C,
         min_papers=args.min_papers,
         seed=args.seed)
 

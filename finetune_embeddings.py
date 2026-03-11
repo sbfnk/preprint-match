@@ -101,6 +101,43 @@ class PairDataset(Dataset):
         return anchor_idx, positive_idx
 
 
+class HardNegativeBatchSampler:
+    """Batch sampler that groups pairs by category for harder in-batch negatives.
+
+    Papers from the same medRxiv category but different journals are harder
+    negatives than random papers. By constructing batches within categories,
+    each in-batch negative is topically similar to the anchor, forcing the
+    model to learn finer-grained journal distinctions.
+    """
+
+    def __init__(self, dataset, records, batch_size, seed=42):
+        self.batch_size = batch_size
+        rng = np.random.default_rng(seed)
+
+        # Group pair indices by anchor's category
+        cat_groups = defaultdict(list)
+        for i, (anchor_idx, _) in enumerate(dataset.pairs):
+            cat = records[anchor_idx].get("category", "")
+            cat_groups[cat].append(i)
+
+        # Build batches: draw from same category where possible
+        self.batches = []
+        for cat, indices in cat_groups.items():
+            rng.shuffle(indices)
+            for start in range(0, len(indices), batch_size):
+                batch = indices[start:start + batch_size]
+                if len(batch) > 1:  # skip singleton batches
+                    self.batches.append(batch)
+
+        rng.shuffle(self.batches)
+
+    def __iter__(self):
+        return iter(self.batches)
+
+    def __len__(self):
+        return len(self.batches)
+
+
 def embed_paper(record, tokenizer, model, device, stride=256, max_chunks=8):
     """Embed a single paper using chunk + mean-pool, with gradients.
 
@@ -320,6 +357,8 @@ def main():
                         help="Validation set fraction (default: 0.1, excluded from training)")
     parser.add_argument("--print-sbatch", action="store_true",
                         help="Print SLURM sbatch template and exit")
+    parser.add_argument("--hard-negatives", action="store_true",
+                        help="Use category-aware batch sampling for harder in-batch negatives")
     parser.add_argument("--skip-regen", action="store_true",
                         help="Skip embedding regeneration after training")
     args = parser.parse_args()
@@ -361,12 +400,23 @@ def main():
     pair_dataset = PairDataset(records, train_idx, seed=args.seed)
     print(f"Training pairs: {len(pair_dataset)}", file=sys.stderr)
 
-    dataloader = DataLoader(
-        pair_dataset,
-        batch_size=args.batch_size,
-        shuffle=True,
-        num_workers=0,
-    )
+    if args.hard_negatives:
+        batch_sampler = HardNegativeBatchSampler(
+            pair_dataset, records, args.batch_size, seed=args.seed)
+        dataloader = DataLoader(
+            pair_dataset,
+            batch_sampler=batch_sampler,
+            num_workers=0,
+        )
+        print(f"Using hard negative batch sampling ({len(batch_sampler)} batches)",
+              file=sys.stderr)
+    else:
+        dataloader = DataLoader(
+            pair_dataset,
+            batch_size=args.batch_size,
+            shuffle=True,
+            num_workers=0,
+        )
 
     # Load model
     print("Loading SPECTER2 model + proximity adapter...", file=sys.stderr)
@@ -507,6 +557,7 @@ def main():
         "best_loss": best_loss,
         "n_trainable_params": n_trainable,
         "n_total_params": n_total,
+        "hard_negatives": args.hard_negatives,
     }
     with open(output_dir / "training_config.json", "w") as f:
         json.dump(config, f, indent=2)

@@ -112,7 +112,8 @@ class JournalPredictor:
 
     def __init__(self, embeddings_dir="finetuned-specter2/embeddings",
                  dataset_path="labeled_dataset.json",
-                 alpha=0.1, k=20, min_papers=10, seed=42):
+                 alpha=0.1, k=20, min_papers=10, classifier_C=10.0,
+                 seed=42):
         self.min_papers = min_papers
         self.alpha = alpha
         self.seed = seed
@@ -185,8 +186,9 @@ class JournalPredictor:
         y_train = self.label_encoder.fit_transform(self.train_journals)
         self.all_classes = self.label_encoder.classes_
 
+        self.classifier_C = classifier_C
         self.clf = LogisticRegression(
-            C=1.0, solver="lbfgs", max_iter=200, random_state=seed)
+            C=classifier_C, solver="lbfgs", max_iter=200, random_state=seed)
         self.clf.fit(X_train, y_train)
 
         # Ensemble probability matrices
@@ -357,6 +359,7 @@ class JournalPredictor:
             "k": self.k,
             "T": self.T,
             "min_papers": self.min_papers,
+            "classifier_C": self.classifier_C,
             "seed": self.seed,
             "train_journals": self.train_journals,
             "train_categories": self.train_categories,
