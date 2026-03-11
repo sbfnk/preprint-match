@@ -154,8 +154,8 @@ def main():
                         help="RRF constant (default: 60)")
     parser.add_argument("--alpha", type=float, default=None,
                         help="Interpolation weight for kNN (default: grid search 0.0-1.0)")
-    parser.add_argument("--classifier-C", type=float, default=1.0,
-                        help="Logistic regression regularisation (default: 1.0)")
+    parser.add_argument("--classifier-C", type=float, default=None,
+                        help="Logistic regression C (default: grid search on val set)")
     parser.add_argument("--classifier-max-iter", type=int, default=200,
                         help="Max iterations for classifier (default: 200)")
     parser.add_argument("--no-category", action="store_true",
@@ -229,10 +229,7 @@ def main():
         knn_preds_val = predict_knn(val_sim_matrix, train_journals, k=args.k)
 
     # --- Classifier ---
-    print(f"\nTraining logistic regression (C={args.classifier_C})...",
-          file=sys.stderr)
-
-    # Build category encoder
+    # Build category encoder and feature matrices
     unique_cats = sorted(set(train_categories))
     cat_to_idx = {c: i + 1 for i, c in enumerate(unique_cats)}
 
@@ -244,8 +241,45 @@ def main():
     label_encoder = LabelEncoder()
     y_train = label_encoder.fit_transform(train_journals)
 
+    if use_val:
+        X_val = build_feature_matrix(
+            val_emb, val_categories, cat_to_idx, use_category)
+
+    # Grid search C on validation set if not specified
+    if args.classifier_C is None and use_val:
+        C_candidates = [0.01, 0.1, 1.0, 10.0]
+        print(f"\nGrid searching classifier C on val set: {C_candidates}",
+              file=sys.stderr)
+        best_C = 1.0
+        best_C_mrr = -1.0
+        for C_val in C_candidates:
+            clf_tmp = LogisticRegression(
+                C=C_val, solver="lbfgs",
+                max_iter=args.classifier_max_iter,
+                random_state=args.seed,
+            )
+            clf_tmp.fit(X_train, y_train)
+            proba_tmp = clf_tmp.predict_proba(X_val)
+            preds_tmp = proba_to_ranked_predictions(
+                proba_tmp, label_encoder.classes_)
+            val_results = evaluate(preds_tmp, val_journals)
+            mrr = val_results["mrr"]
+            print(f"  C={C_val}: val MRR={mrr:.4f}, "
+                  f"acc@1={val_results['accuracy@1']:.4f}, "
+                  f"acc@10={val_results['accuracy@10']:.4f}", file=sys.stderr)
+            if mrr > best_C_mrr:
+                best_C_mrr = mrr
+                best_C = C_val
+        classifier_C = best_C
+        print(f"  Best C={classifier_C} (val MRR={best_C_mrr:.4f})",
+              file=sys.stderr)
+    else:
+        classifier_C = args.classifier_C if args.classifier_C is not None else 1.0
+
+    print(f"\nTraining logistic regression (C={classifier_C})...",
+          file=sys.stderr)
     clf = LogisticRegression(
-        C=args.classifier_C,
+        C=classifier_C,
         solver="lbfgs",
         max_iter=args.classifier_max_iter,
         random_state=args.seed,
@@ -260,8 +294,6 @@ def main():
     clf_preds = proba_to_ranked_predictions(proba, classes)
 
     if use_val:
-        X_val = build_feature_matrix(
-            val_emb, val_categories, cat_to_idx, use_category)
         proba_val = clf.predict_proba(X_val)
         clf_preds_val = proba_to_ranked_predictions(proba_val, classes)
 
@@ -407,7 +439,7 @@ def main():
             "k": args.k,
             "method": args.method,
             "rrf_k": args.rrf_k,
-            "classifier_C": args.classifier_C,
+            "classifier_C": classifier_C,
             "classifier_max_iter": args.classifier_max_iter,
             "use_category": use_category,
             "min_papers": args.min_papers,
