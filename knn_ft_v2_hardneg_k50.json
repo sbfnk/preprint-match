@@ -1,0 +1,154 @@
+{
+  "config": {
+    "k": 50,
+    "val_size": 0.1,
+    "test_size": 0.2,
+    "seed": 42,
+    "min_papers": 0,
+    "n_train": 24844,
+    "n_val": 3572,
+    "n_test": 6950,
+    "n_test_after_filter": 6950,
+    "n_train_journals": 4402,
+    "n_test_journals": 2512
+  },
+  "overall": {
+    "accuracy@1": 0.12330935251798561,
+    "accuracy@5": 0.31424460431654677,
+    "accuracy@10": 0.4162589928057554,
+    "mrr": 0.21479407969935604,
+    "n_test": 6950
+  },
+  "per_tier": {
+    "top-20": {
+      "accuracy@1": 0.3157586408904511,
+      "accuracy@5": 0.6321031048623316,
+      "accuracy@10": 0.7205623901581723,
+      "mrr": 0.4595293840167873,
+      "n_test": 1707
+    },
+    "top-50": {
+      "accuracy@1": 0.14325842696629212,
+      "accuracy@5": 0.41292134831460675,
+      "accuracy@10": 0.547752808988764,
+      "mrr": 0.26192845374495677,
+      "n_test": 712
+    },
+    "mid-tail": {
+      "accuracy@1": 0.07427976397084346,
+      "accuracy@5": 0.2637972926067338,
+      "accuracy@10": 0.381464769177369,
+      "mrr": 0.16624959810471113,
+      "n_test": 2881
+    },
+    "long-tail": {
+      "accuracy@1": 0.0012121212121212121,
+      "accuracy@5": 0.03090909090909091,
+      "accuracy@10": 0.10545454545454545,
+      "mrr": 0.02602669344714347,
+      "n_test": 1650
+    }
+  },
+  "top_confusions": [
+    {
+      "true": "BMJ Open",
+      "predicted": "PLOS ONE",
+      "count": 73
+    },
+    {
+      "true": "Scientific Reports",
+      "predicted": "PLOS ONE",
+      "count": 61
+    },
+    {
+      "true": "PLOS Global Public Health",
+      "predicted": "PLOS ONE",
+      "count": 42
+    },
+    {
+      "true": "PLOS ONE",
+      "predicted": "BMJ Open",
+      "count": 33
+    },
+    {
+      "true": "BMC Public Health",
+      "predicted": "PLOS ONE",
+      "count": 29
+    },
+    {
+      "true": "Frontiers in Public Health",
+      "predicted": "PLOS ONE",
+      "count": 26
+    },
+    {
+      "true": "PLOS ONE",
+      "predicted": "Scientific Reports",
+      "count": 24
+    },
+    {
+      "true": "International Journal of Environmental Research and Public Health",
+      "predicted": "PLOS ONE",
+      "count": 21
+    },
+    {
+      "true": "Scientific Reports",
+      "predicted": "Nature Communications",
+      "count": 20
+    },
+    {
+      "true": "BMJ Global Health",
+      "predicted": "PLOS ONE",
+      "count": 14
+    },
+    {
+      "true": "BMC Infectious Diseases",
+      "predicted": "PLOS ONE",
+      "count": 14
+    },
+    {
+      "true": "PLOS ONE",
+      "predicted": "PLOS Global Public Health",
+      "count": 12
+    },
+    {
+      "true": "Vaccines",
+      "predicted": "PLOS ONE",
+      "count": 12
+    },
+    {
+      "true": "Epidemics",
+      "predicted": "PLOS Computational Biology",
+      "count": 12
+    },
+    {
+      "true": "Clinical Infectious Diseases",
+      "predicted": "Nature Communications",
+      "count": 11
+    },
+    {
+      "true": "Epidemiology and Infection",
+      "predicted": "PLOS ONE",
+      "count": 11
+    },
+    {
+      "true": "JAMA Network Open",
+      "predicted": "PLOS ONE",
+      "count": 11
+    },
+    {
+      "true": "Frontiers in Medicine",
+      "predicted": "PLOS ONE",
+      "count": 11
+    },
+    {
+      "true": "Open Forum Infectious Diseases",
+      "predicted": "PLOS ONE",
+      "count": 11
+    },
+    {
+      "true": "Clinical Infectious Diseases",
+      "predicted": "PLOS ONE",
+      "count": 10
+    }
+  ]
+}
