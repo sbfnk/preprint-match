@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}About — Preprint Match{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12 fade-in">
+
+    <h1 class="text-3xl font-bold text-surface-900 dark:text-white mb-8">About Preprint Match</h1>
+
+    <div class="prose prose-surface dark:prose-invert space-y-6 text-surface-600 dark:text-surface-300 leading-relaxed">
+
+        <p class="text-lg">
+            Every week, hundreds of new preprints appear on medRxiv. Each one will eventually find its way to a journal &mdash; or not. We predict where.
+        </p>
+
+        <h2 class="text-xl font-semibold text-surface-900 dark:text-white mt-10 mb-3">What this is</h2>
+
+        <p>
+            Preprint Match uses machine learning to predict which journal a medRxiv preprint is most likely to be published in. We train on {{ "{:,}".format(meta.n_papers_training) }} preprints that have already been published, learning the patterns that connect papers to journals: topic, methodology, scope, writing style.
+        </p>
+
+        <p>
+            For each of the {{ "{:,}".format(meta.n_papers) }} current preprints on medRxiv, we compute calibrated probability estimates across {{ meta.n_journals }} journals with sufficient training data. You can explore this from either direction: pick a paper and see where it might land, or pick a journal and see what's coming. Preprints destined for niche journals outside this set will still get predictions, but among the journals we do cover.
+        </p>
+
+        <h2 class="text-xl font-semibold text-surface-900 dark:text-white mt-10 mb-3">Why</h2>
+
+        <p>
+            Journals are filters. They take a stream of research and select what fits their scope, standards, and audience. That has its utility &mdash; but it can also be slow, opaque, and concentrated in the hands of a few publishers.
+        </p>
+
+        <p>
+            Preprints changed the first part: anyone can share their work immediately. But discovery is still hard. If you work in infectious disease epidemiology, how do you find the preprints that matter to you among thousands posted each month?
+        </p>
+
+        <p>
+            We think the answer looks less like a journal and more like a personalised feed &mdash; one that understands your interests and surfaces relevant work as it appears, not months later when it's finally published.
+        </p>
+
+        <h2 class="text-xl font-semibold text-surface-900 dark:text-white mt-10 mb-3">Where this is going</h2>
+
+        <ul class="list-disc list-inside space-y-2 ml-2">
+            <li><strong>Custom journals</strong> &mdash; Define your own scope. Combine topics, methods, and populations to create a feed that no existing journal covers. Get notified when a matching preprint appears.</li>
+            <li><strong>Beyond medRxiv</strong> &mdash; bioRxiv, arXiv, and other preprint servers have the same discovery problem. The approach generalises.</li>
+            <li><strong>Better recommendations</strong> &mdash; Journal prediction is a stepping stone. The real goal is connecting researchers with the work they need to see, regardless of where (or whether) it gets published.</li>
+            <li><strong>Linking with peer review</strong> &mdash; Preprints don't have to wait for journals to be reviewed. Platforms like
+                <a href="https://peercommunityin.org/" class="text-brand-600 dark:text-brand-400 hover:underline">Peer Community In</a>,
+                <a href="https://prereview.org/" class="text-brand-600 dark:text-brand-400 hover:underline">PREreview</a>,
+                <a href="https://rrid.mitpress.mit.edu/" class="text-brand-600 dark:text-brand-400 hover:underline">Rapid Reviews: Infectious Diseases</a>, and
+                <a href="https://elifesciences.org/" class="text-brand-600 dark:text-brand-400 hover:underline">eLife</a>
+                are already reviewing preprints openly. Surfacing those evaluations alongside predictions is a natural next step.</li>
+        </ul>
+
+        <h2 class="text-xl font-semibold text-surface-900 dark:text-white mt-10 mb-3">How it works</h2>
+
+        <p>
+            We train on {{ "{:,}".format(meta.n_papers_training) }} medRxiv preprints that were subsequently published in peer-reviewed journals. Each paper is encoded into a 768-dimensional vector using
+            <a href="https://huggingface.co/allenai/specter2" class="text-brand-600 dark:text-brand-400 hover:underline">SPECTER2</a>,
+            a scientific document embedding model trained on citation graphs. We fine-tune the model's adapter layer using contrastive learning: papers published in the same journal are pulled together in embedding space, while papers from different journals are pushed apart. To make the task harder (and the embeddings better), training batches group papers from the same medRxiv category, forcing the model to learn fine-grained distinctions rather than broad topical ones.
+        </p>
+
+        <p>
+            Predictions combine two approaches: a nearest-neighbour lookup (which papers in the training set are most similar?) and a logistic regression classifier (which journal do the embedding features point to?). The two are blended with a 90/10 classifier/kNN weight, tuned on a held-out validation set. Probabilities are calibrated using isotonic regression so that when the model says "15% chance of PLOS ONE", roughly 15% of such predictions are correct.
+        </p>
+
+        <p>
+            On our test set (6,950 papers, 316 journals), the model gets the exact journal right 20% of the time, and the correct journal appears in the top 10 predictions 61% of the time. For the 20 most common journals, the top-10 list is correct 82% of the time.
+        </p>
+
+        <p>
+            The full methodology &mdash; dataset construction, embedding comparison, fine-tuning details, per-tier evaluation, calibration analysis &mdash; is described in
+            <a href="https://github.com/sbfnk/medrxiv-journal-prediction/blob/main/RESULTS.md" class="text-brand-600 dark:text-brand-400 hover:underline">RESULTS.md</a>.
+            All code is
+            <a href="https://github.com/sbfnk/medrxiv-journal-prediction" class="text-brand-600 dark:text-brand-400 hover:underline">open source</a>.
+        </p>
+
+        <h2 class="text-xl font-semibold text-surface-900 dark:text-white mt-10 mb-3">Who</h2>
+
+        <p>
+            Built by <a href="https://epiforecasts.io/people/" class="text-brand-600 dark:text-brand-400 hover:underline">Sebastian Funk</a>.
+        </p>
+
+    </div>
+</div>
+{% endblock %}

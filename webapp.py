@@ -151,6 +151,16 @@ def index():
     )
 
 
+@app.route("/about")
+def about():
+    """About page."""
+    meta = dict(DATA["meta"])
+    meta["n_papers_training"] = sum(
+        j["training_papers"] for j in DATA["journals"]
+    )
+    return render_template("about.html", meta=meta)
+
+
 @app.route("/journal/<path:name>")
 def journal_view(name):
     """Journal detail — top predicted preprints."""
@@ -342,6 +352,14 @@ def doi_url_filter(doi):
 
 # ---------- Main ----------
 
+# Load data at import time so gunicorn workers have it ready
+import os
+_predictions_dir = os.environ.get("PREDICTIONS_DIR", "predictions")
+load_data(_predictions_dir)
+print(f"Loaded {DATA['meta']['n_papers']} papers, "
+      f"{DATA['meta']['n_journals']} journals")
+
+
 def main():
     parser = argparse.ArgumentParser(description="medRxiv predictions web app")
     parser.add_argument("--predictions-dir", default="predictions")
@@ -349,10 +367,9 @@ def main():
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
 
-    load_data(args.predictions_dir)
-    print(f"Loaded {DATA['meta']['n_papers']} papers, "
-          f"{DATA['meta']['n_journals']} journals")
-    print(f"Date range: {DATA['meta']['date_range']}")
+    # Reload if a different dir was specified
+    if args.predictions_dir != _predictions_dir:
+        load_data(args.predictions_dir)
 
     app.run(host="0.0.0.0", port=args.port, debug=args.debug)
 
