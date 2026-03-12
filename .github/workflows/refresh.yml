@@ -85,9 +85,6 @@ jobs:
           echo "Running precompute..."
           python precompute.py $ARGS --days 60
 
-      - name: Generate slim papers file
-        run: python scripts/make_slim.py predictions/papers.json
-
       - name: Upload updated prediction state
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

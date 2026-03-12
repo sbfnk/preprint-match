@@ -10,7 +10,7 @@ COPY templates/ templates/
 
 # Copy only the essential prediction data
 COPY predictions/proba_matrix.npz predictions/
-COPY predictions/papers_slim.json predictions/papers.json
+COPY predictions/papers.json predictions/
 COPY predictions/journals.json predictions/
 COPY predictions/meta.json predictions/
 

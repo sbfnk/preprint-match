@@ -17,7 +17,6 @@ labeled_*.json
 *.npy
 *.pkl
 *.parquet
-predictions/papers.json
 predictions/papers_old.json
 predictions/new_papers.json
 predictions/embeddings.npz
