@@ -16,4 +16,4 @@ COPY predictions/meta.json predictions/
 
 EXPOSE 8080
 
-CMD ["gunicorn", "webapp:app", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "2", "--timeout", "120"]
+CMD ["gunicorn", "webapp:app", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "2", "--timeout", "120", "--preload"]
