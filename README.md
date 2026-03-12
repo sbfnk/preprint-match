@@ -8,26 +8,26 @@ Predict which journal a medRxiv preprint will be published in, with calibrated p
 python3 webapp.py --port 5000
 ```
 
-Browse journals, explore paper predictions, and search across 54,000+ preprints and 316 journals. Light/dark theme follows system preference.
+Browse journals, explore paper predictions, and search across 54,000+ preprints and 501 journals. Light/dark theme follows system preference.
+
+Also live at [preprints.epiforecasts.io](https://preprints.epiforecasts.io).
 
 ## How it works
 
-1. **Embeddings**: SPECTER2 full-text embeddings, contrastively fine-tuned for journal discrimination (adapter-only, InfoNCE loss)
-2. **kNN**: k=20 cosine similarity with weighted voting
-3. **Classifier**: Multinomial logistic regression on embeddings + medRxiv category features
-4. **Ensemble**: Score interpolation (alpha=0.1) between kNN and classifier
-5. **Calibration**: Temperature scaling (T=0.84), fitted on validation set
+Papers are embedded using SPECTER2 (full-text, adapter-only fine-tuning with InfoNCE loss and hard negative mining by medRxiv category). Predictions combine k=20 cosine-similarity kNN with multinomial logistic regression (C=10, tuned on validation set) on embeddings + category features. The ensemble interpolates 90% classifier / 10% kNN (alpha=0.1). Probabilities are calibrated with isotonic regression (ECE=0.028).
+
+On the test set (6,950 papers, 316 journals with ≥10 training papers): gets the exact journal right 20% of the time, correct journal in the top 10 61% of the time. For the 20 most common journals, the top-10 list is correct 82% of the time.
 
 ## Dataset
 
-35,366 labelled medRxiv preprints (2019–2025) across 4,403 journals. The webapp serves predictions for journals with at least 15 training papers (316 journals).
+35,366 labelled medRxiv preprints (2019–2026) across 4,402 journals. The webapp serves predictions for journals with at least 10 training papers (501 journals).
 
 - **Preprint text**: medRxiv API + JATS XML from `s3://biorxiv-src-monthly/Current_Content/`
 - **Publication destinations**: medRxiv API `published` field
 - **Journal names**: Crossref API
 - **Full text coverage**: 77% of papers (27,105 / 35,366)
 
-Evaluation uses a 70/10/20 stratified train/val/test split. See [RESULTS.md](RESULTS.md) for detailed methodology and per-tier breakdowns (based on an earlier 25k dataset; the approach is unchanged).
+Evaluation uses a 70/10/20 stratified train/val/test split. See [RESULTS.md](RESULTS.md) for detailed methodology and per-tier breakdowns.
 
 ## Usage
 

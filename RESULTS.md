@@ -2,15 +2,15 @@
 
 ## Problem
 
-Given a medRxiv preprint, predict which journal it will ultimately be published in. The dataset contains 35,366 labelled preprints spanning 4,402 distinct journals — an extreme multi-class classification problem with heavy class imbalance (the most common journal, PLOS ONE, has ~1,500 papers; many journals appear only once).
+Given a medRxiv preprint, predict which journal it will ultimately be published in. The dataset has 35,366 labelled preprints across 4,402 journals. PLOS ONE, the largest class, has ~1,500 papers; many journals appear only once.
 
 ## Dataset
 
-**Source**: medRxiv preprints posted between June 2019 and March 2026 that were subsequently published in peer-reviewed journals.
+**Source**: [medRxiv](https://www.medrxiv.org/) preprints posted between June 2019 and March 2026 that were subsequently published in peer-reviewed journals.
 
-- **Preprint metadata and full text**: medRxiv API + JATS XML from the Cold Spring Harbor Laboratory S3 archive (`s3://biorxiv-src-monthly/Current_Content/`)
+- **Preprint metadata and full text**: [medRxiv API](https://api.medrxiv.org/) + JATS XML from the Cold Spring Harbor Laboratory S3 archive (`s3://biorxiv-src-monthly/Current_Content/`)
 - **Publication destinations**: medRxiv API `published` field linking preprint DOIs to published DOIs
-- **Journal names**: Crossref API / Public Data File lookup from published DOIs
+- **Journal names**: [Crossref API](https://www.crossref.org/documentation/retrieve-metadata/rest-api/) / Public Data File lookup from published DOIs
 
 **Dataset statistics**:
 
@@ -36,9 +36,9 @@ All experiments use a stratified 70/10/20 train/val/test split with random seed 
 
 **Metrics**:
 
-- **Accuracy@k** (k=1, 5, 10): Fraction of test papers where the true journal appears in the top-k predictions
-- **MRR** (Mean Reciprocal Rank): Average of 1/rank of the true journal across all test papers
-- **ECE** (Expected Calibration Error): How well predicted probabilities match observed frequencies
+- **acc@k** (k=1, 5, 10): Fraction of test papers where the true journal appears in the top-k predictions. acc@1 = "got it exactly right"; acc@10 = "correct journal is somewhere in the top 10 list".
+- **MRR** (Mean Reciprocal Rank): Average of 1/rank of the true journal. If the correct journal is ranked 1st, that paper contributes 1.0; if 5th, it contributes 0.2. Higher is better.
+- **ECE** (Expected Calibration Error): How well predicted probabilities match observed frequencies. An ECE of 0.03 means predictions are off by about 3 percentage points on average.
 
 **Per-tier breakdown**: Journals are assigned to frequency tiers based on training set counts:
 
@@ -61,9 +61,9 @@ k-Nearest Neighbours (k=20) with similarity-weighted voting. For each test paper
 
 Three embedding configurations were compared:
 
-1. **SPECTER2 title+abstract** (768-dim): SPECTER2 base model with proximity adapter, encoding title + abstract only.
+1. **[SPECTER2](https://huggingface.co/allenai/specter2) title+abstract** (768-dim): SPECTER2 base model with proximity adapter, encoding title + abstract only.
 2. **SPECTER2 full-text** (768-dim): Same model, encoding title + abstract + full text. Long documents are split into overlapping chunks (stride=256 tokens), embedded via the CLS token, and mean-pooled.
-3. **nomic-embed-text-v1.5 full-text** (768-dim): Long-context embedding model (8,192 tokens).
+3. **[nomic-embed-text-v1.5](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5) full-text** (768-dim): Long-context embedding model (8,192 tokens).
 
 ### Results
 
@@ -79,11 +79,11 @@ SPECTER2 full-text is the best embedding. Full text provides a modest but consis
 
 ### Method
 
-Rather than fine-tuning the full SPECTER2 model (110M parameters), only the proximity adapter was fine-tuned (0.9M parameters, 0.8% of total). This preserves the general scientific knowledge in the base model while adapting the embedding geometry for journal discrimination.
+Rather than fine-tuning the full [SPECTER2](https://huggingface.co/allenai/specter2) model (110M parameters), only the proximity adapter was fine-tuned (0.9M parameters, 0.8% of total). The base model stays frozen; only the adapter weights change.
 
-**Training objective**: InfoNCE contrastive loss with in-batch negatives. For each paper in a batch, papers from the same journal serve as positives and all other papers in the batch as negatives.
+**Training objective**: [InfoNCE](https://arxiv.org/abs/1807.03748) contrastive loss with in-batch negatives. For each paper in a batch, papers from the same journal serve as positives and all other papers in the batch as negatives.
 
-**Hard negative mining**: Batches are constructed by grouping papers within the same medRxiv category (e.g. all Epidemiology papers together). This ensures in-batch negatives are topically similar — the model must learn to distinguish between, say, a *Lancet Infectious Diseases* paper and a *Clinical Infectious Diseases* paper, rather than between an infectious disease paper and a cardiology paper.
+**Hard negative mining**: Batches are constructed by grouping papers within the same medRxiv category (e.g. all Epidemiology papers together). This way, in-batch negatives are topically similar: the model has to distinguish between, say, a *Lancet Infectious Diseases* paper and a *Clinical Infectious Diseases* paper, not between an infectious disease paper and a cardiology paper.
 
 **Training details**: 3 epochs, batch size 8 with up to 4 chunks per document (giving up to 7 in-batch negatives), learning rate 2e-5 with linear warmup, temperature 0.05. Training took ~3.5 hours on a single NVIDIA A40 GPU (48GB). After fine-tuning, all 35,366 papers were re-embedded (~3 hours).
 
@@ -97,7 +97,7 @@ Rather than fine-tuning the full SPECTER2 model (110M parameters), only the prox
 | Fine-tuned (hard-neg) | 20 | 11.5% | 28.0% | 36.2% | 0.191 |
 | **Fine-tuned (hard-neg)** | **50** | **12.3%** | **31.4%** | **41.6%** | **0.215** |
 
-Fine-tuning provides a consistent ~1.5pp lift in acc@1 and ~3pp in acc@10. Higher k values also help substantially. Hard negatives show minimal improvement in kNN alone but their benefit appears in the ensemble (below).
+Fine-tuning gives ~1.5pp in acc@1 and ~3pp in acc@10. Higher k also helps. Hard negatives make little difference in kNN alone, but their benefit shows up in the ensemble (below).
 
 ## Experiment 3: Trained Classifier
 
@@ -112,7 +112,7 @@ Multinomial logistic regression on SPECTER2 embeddings (768-dim) + medRxiv categ
 | Fine-tuned | 1.0 | 12.0% | 39.7% | 0.207 | All 4,402 journals |
 | Fine-tuned (hard-neg) | 10.0 | 13.1% | 41.5% | 0.220 | All 4,402 journals |
 
-The classifier excels on frequent journals (37.8% acc@1 on top-20) but fails on rare ones (near-zero on long-tail). C=10 was selected by validation grid search.
+The classifier does well on frequent journals (37.8% acc@1 on top-20) but is near-zero on long-tail. C=10 was selected by validation grid search.
 
 ## Experiment 4: Ensemble
 
@@ -143,11 +143,11 @@ Alpha was tuned via grid search on the validation set over α ∈ {0.0, 0.1, …
 
 ### Discussion
 
-The best configuration uses hard-negative fine-tuned embeddings with an interpolation ensemble (alpha=0.1, C=10). The C grid search was the single biggest improvement (+0.9pp acc@1), while hard negatives added a further +0.9pp — together they lift acc@1 from 18.2% to 20.0%.
+The best configuration uses hard-negative fine-tuned embeddings with an interpolation ensemble (alpha=0.1, C=10). C grid search was the single biggest improvement (+0.9pp acc@1); hard negatives added another +0.9pp. Together they take acc@1 from 18.2% to 20.0%.
 
-Alpha=0.1 means the ensemble is 90% classifier, 10% kNN. The classifier dominates because with C=10 and sufficient training data, it learns effective decision boundaries. The kNN component provides a useful correction, especially for journals near the min-papers threshold.
+Alpha=0.1 means 90% classifier, 10% kNN. With C=10 and enough training data, the classifier carries most of the weight. kNN still helps, especially for journals near the min-papers threshold.
 
-Higher k (50 vs 20) gives marginal improvements in acc@10 (+0.5pp) but slightly hurts acc@1 (−0.3pp) — more neighbours add noise to the top prediction but improve coverage.
+Higher k (50 vs 20) marginally improves acc@10 (+0.5pp) but slightly hurts acc@1 (−0.3pp). More neighbours add noise to the top prediction but improve coverage.
 
 ## Calibration
 
@@ -161,7 +161,7 @@ Probabilities are calibrated using isotonic regression fitted on the validation 
 | Max confidence | 0.574 |
 | Mean confidence | 0.155 |
 
-The model is already well-calibrated — temperature scaling barely changes the probabilities (T ≈ 1.0). The model never assigns more than ~57% probability to any single journal, reflecting genuine uncertainty in this task. ECE of 0.028 means predicted probabilities closely match observed frequencies.
+The raw probabilities are already well-calibrated: temperature scaling barely changes them (T ≈ 1.0). The model never assigns more than ~57% to any single journal. ECE of 0.028 means predicted probabilities closely match observed frequencies.
 
 ## Summary
 
@@ -174,9 +174,4 @@ The model is already well-calibrated — temperature scaling barely changes the 
 
 The best method achieves 20.0% acc@1, 61.4% acc@10, and 0.332 MRR on the 316 journals with ≥10 training papers (covering 69% of test papers). For the top-20 journals, the correct journal appears in the top-10 list 82% of the time.
 
-The key ingredients, in order of impact:
-1. **Restricting to well-supported journals** (min-10 filter): largest single improvement
-2. **Classifier regularisation tuning** (C=10 vs C=1): +0.9pp acc@1
-3. **Contrastive fine-tuning with hard negatives**: +0.9pp acc@1
-4. **Higher k in kNN**: helps acc@10, slight cost to acc@1
-5. **Calibration**: probabilities are already well-calibrated (ECE 0.028)
+What mattered most, roughly in order: restricting to journals with ≥10 training papers (largest single effect), tuning classifier regularisation (C=10 vs C=1, +0.9pp acc@1), contrastive fine-tuning with hard negatives (+0.9pp acc@1), and using more neighbours in kNN (helps acc@10, slight cost to acc@1). Calibration required almost no correction (ECE 0.028).
