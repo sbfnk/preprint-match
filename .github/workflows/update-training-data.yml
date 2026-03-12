@@ -1,0 +1,104 @@
+name: Update training data
+
+on:
+  schedule:
+    # First of every month at 04:00 UTC
+    - cron: "0 4 1 * *"
+  workflow_dispatch:
+
+jobs:
+  update-labels:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download existing dataset from release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="data-latest"
+          echo "Downloading existing labeled dataset..."
+          gh release download "$TAG" -p "labeled_dataset.json.gz" -D /tmp || true
+          if [ -f /tmp/labeled_dataset.json.gz ]; then
+            gunzip -c /tmp/labeled_dataset.json.gz > labeled_dataset.json
+            echo "Loaded existing dataset"
+            python3 -c "import json; d=json.load(open('labeled_dataset.json')); print(f'{len(d)} existing records')"
+          else
+            echo "No existing dataset found, starting fresh"
+          fi
+
+      - name: Convert dataset to progress file for incremental update
+        run: |
+          python3 -c "
+          import json
+          from pathlib import Path
+          if Path('labeled_dataset.json').exists():
+              data = json.load(open('labeled_dataset.json'))
+              with open('labeled_progress.jsonl', 'w') as f:
+                  for r in data:
+                      f.write(json.dumps(r) + '\n')
+              print(f'Seeded progress file with {len(data)} records')
+          "
+
+      - name: Fetch preprints and look up new Crossref labels
+        run: |
+          python3 extract_labeled_data.py \
+            --start-date 2019-06-01 \
+            --end-date $(date +%Y-%m-%d) \
+            --output labeled_dataset.json \
+            --progress-file labeled_progress.jsonl
+
+      - name: Add full text from XML files
+        run: |
+          # Full text requires the XML files which are too large for CI.
+          # The add_fulltext.py step is skipped here — full text coverage
+          # stays at whatever it was. Full text is only updated during
+          # manual retraining runs.
+          echo "Skipping full text extraction (requires XML archive)"
+
+      - name: Upload updated dataset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NEW_COUNT=$(python3 -c "import json; print(len(json.load(open('labeled_dataset.json'))))")
+          echo "Dataset now has ${NEW_COUNT} labelled records"
+
+          gzip -c labeled_dataset.json > /tmp/labeled_dataset.json.gz
+          gh release upload "data-latest" --clobber /tmp/labeled_dataset.json.gz
+
+          echo "Uploaded to data-latest release"
+
+      - name: Check if retraining is needed
+        id: check
+        run: |
+          # Compare old vs new record count
+          OLD=$(gh release download "data-latest" -p "labeled_dataset.json.gz" -D /tmp/old 2>/dev/null && \
+               gunzip -c /tmp/old/labeled_dataset.json.gz | python3 -c "import json,sys; print(len(json.load(sys.stdin)))" || echo "0")
+          NEW=$(python3 -c "import json; print(len(json.load(open('labeled_dataset.json'))))")
+          DIFF=$((NEW - OLD))
+          echo "Old: ${OLD}, New: ${NEW}, Diff: ${DIFF}"
+          if [ "$DIFF" -gt 1000 ]; then
+            echo "retrain=true" >> "$GITHUB_OUTPUT"
+            echo "More than 1000 new labels — retraining recommended"
+          else
+            echo "retrain=false" >> "$GITHUB_OUTPUT"
+            echo "Fewer than 1000 new labels — skipping retrain"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create issue if retraining needed
+        if: steps.check.outputs.retrain == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "Training data updated — retrain model" \
+            --body "The monthly training data update added >1000 new labelled papers. Consider retraining the model to incorporate them. Run the retrain workflow manually or use a commercial GPU provider." \
+            --label "automation"
