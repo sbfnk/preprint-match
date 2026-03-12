@@ -10,6 +10,7 @@ Usage:
   python3 webapp.py --predictions-dir predictions
 """
 
+import html
 import json
 import argparse
 import re
@@ -31,6 +32,9 @@ def load_data(predictions_dir):
 
     with open(d / "journals.json") as f:
         DATA["journals"] = json.load(f)
+    # Unescape HTML entities in journal names (e.g. &amp; → &)
+    for j in DATA["journals"]:
+        j["name"] = html.unescape(j["name"])
 
     with open(d / "papers.json") as f:
         DATA["papers"] = json.load(f)
@@ -240,6 +244,8 @@ def api_search():
     word_start = []  # query matches start of a word
     substring = []   # query appears anywhere
 
+    q_words = q_lower.split()
+
     for j in DATA["journals"]:
         name_lower = j["name"].lower()
         name_stripped = (name_lower[4:] if name_lower.startswith("the ")
@@ -251,6 +257,8 @@ def api_search():
         elif any(w.startswith(q_lower) for w in name_lower.split()):
             word_start.append(j)
         elif q_lower in name_lower:
+            substring.append(j)
+        elif len(q_words) > 1 and all(w in name_lower for w in q_words):
             substring.append(j)
 
     for group in (exact, prefix, word_start, substring):
@@ -275,9 +283,11 @@ def api_search():
                 if len(papers) >= 5:
                     break
     elif len(q) >= 3:
-        # Title search (only if query is long enough)
+        # Title search — all query words must appear (any order)
+        words = q_lower.split()
         for p in DATA["papers"]:
-            if q_lower in p.get("title", "").lower():
+            title_lower = p.get("title", "").lower()
+            if all(w in title_lower for w in words):
                 papers.append({
                     "doi": p["doi"],
                     "title": fix_title_filter(p.get("title", "")),
