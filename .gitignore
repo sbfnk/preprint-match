@@ -32,10 +32,12 @@ calibration_results*.json
 # Fine-tuned models
 finetuned-specter2/
 finetuned-specter2-v2/
+finetuned-specter2-v2-hardneg/
 
 # Saved model and predictions
 model/
 model-v2/
+model-v3/
 predictions/
 refresh_state.json
 meca/

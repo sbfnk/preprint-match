@@ -1,0 +1,107 @@
+name: Weekly refresh
+
+on:
+  schedule:
+    # Every Sunday at 03:00 UTC
+    - cron: "0 3 * * 0"
+  workflow_dispatch:
+    inputs:
+      full_reembed:
+        description: "Re-embed all papers (not just new ones)"
+        type: boolean
+        default: false
+
+env:
+  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install transformers adapters numpy scipy scikit-learn tqdm requests
+
+      - name: Download artifacts from release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="data-latest"
+          mkdir -p model predictions
+
+          echo "Downloading model artifacts..."
+          gh release download "$TAG" -p "model.tar.gz" -D /tmp
+          tar xzf /tmp/model.tar.gz
+
+          echo "Downloading adapter..."
+          gh release download "$TAG" -p "adapter.tar.gz" -D /tmp || echo "No adapter found, using base model"
+          if [ -f /tmp/adapter.tar.gz ]; then
+            tar xzf /tmp/adapter.tar.gz
+          fi
+
+          echo "Downloading labeled dataset..."
+          gh release download "$TAG" -p "labeled_dataset.json.gz" -D /tmp
+          gunzip -c /tmp/labeled_dataset.json.gz > labeled_dataset.json
+
+          echo "Downloading prediction state..."
+          gh release download "$TAG" -p "predictions-state.tar.gz" -D /tmp
+          tar xzf /tmp/predictions-state.tar.gz
+
+          echo "Files downloaded:"
+          ls -lh model/ predictions/ labeled_dataset.json
+
+      - name: Fetch new preprints and score
+        run: |
+          # Determine adapter path
+          ADAPTER=""
+          for d in finetuned-specter2-v2-hardneg/best_adapter finetuned-specter2/best_adapter; do
+            if [ -d "$d" ]; then
+              ADAPTER="$d"
+              break
+            fi
+          done
+
+          ARGS="--model-dir model --dataset labeled_dataset.json --output-dir predictions"
+          if [ -n "$ADAPTER" ]; then
+            ARGS="$ARGS --adapter-path $ADAPTER"
+          fi
+
+          # Full re-embed if requested, otherwise incremental
+          if [ "${{ inputs.full_reembed }}" = "true" ]; then
+            echo "Full re-embed requested, removing existing embeddings..."
+            rm -f predictions/embeddings.npz
+          fi
+
+          echo "Running precompute..."
+          python precompute.py $ARGS --days 60
+
+      - name: Generate slim papers file
+        run: python scripts/make_slim.py predictions/papers.json
+
+      - name: Upload updated prediction state
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Packaging updated predictions..."
+          tar czf /tmp/predictions-state.tar.gz \
+            predictions/papers.json \
+            predictions/embeddings.npz
+
+          echo "Uploading to release..."
+          gh release upload "data-latest" --clobber /tmp/predictions-state.tar.gz
+
+      - name: Deploy to Fly.io
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Run fly deploy
+        run: flyctl deploy --remote-only
