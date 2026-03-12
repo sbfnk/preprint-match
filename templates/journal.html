@@ -38,9 +38,12 @@
         {% endif %}
 
         <p class="text-surface-500 dark:text-surface-300 mt-4 text-sm leading-relaxed">
-            These are medRxiv preprints that haven't yet been published in {{ journal_name }}.
-            The model predicts which ones are most likely to end up here, based on
-            {% if journal_info %}{{ journal_info.training_papers }} papers previously published in this journal{% else %}papers previously published in this journal{% endif %}.
+            {% if days %}Preprints posted in the last {{ days }} days, ranked{% else %}All preprints, ranked{% endif %}
+            by predicted probability of publication in {{ journal_name }},
+            based on {% if journal_info %}{{ journal_info.training_papers }}{% endif %} papers previously published here.
+            {% if baseline_pct %}The average preprint has a {{ "%.2f" | format(baseline_pct) }}% predicted probability for this journal, so
+            anything above that is already an above-average match.{% endif %}
+            {% if not days %}Older preprints may already have been published elsewhere.{% endif %}
         </p>
 
         <!-- Date filter -->
@@ -114,7 +117,7 @@
                     <div class="mt-3 flex items-center gap-4">
                         <div class="flex items-center gap-3 flex-1 max-w-sm">
                             <div class="flex-1 bg-surface-200 dark:bg-surface-700 rounded-full h-2.5 overflow-hidden"
-                                 title="How this paper ranks among all preprints for this journal">
+                                 title="Match strength — a fuller bar means a stronger fit for this journal">
                                 <div class="prob-bar h-full rounded-full"
                                      style="width: {{ paper.percentile }}%">
                                 </div>
@@ -122,7 +125,7 @@
                         </div>
                         <span class="text-sm font-bold cursor-help
                             {% if paper.percentile >= 99 %}text-brand-500 dark:text-brand-300{% elif paper.percentile >= 95 %}text-brand-600 dark:text-brand-400{% elif paper.percentile >= 90 %}text-brand-700 dark:text-brand-500{% else %}text-surface-500 dark:text-surface-300{% endif %}"
-                            title="This paper ranks in the top {{ (100 - paper.percentile) | round(1) }}% of all preprints scored for {{ journal_name }}. Lower is better — Top 1% means only 1 in 100 preprints score higher.">
+                            title="This paper scores higher than {{ paper.percentile | round(1) }}% of all preprints for {{ journal_name }}. Top 1% = only 1 in 100 preprints score higher.">
                             {{ paper.percentile | top_pct }}
                         </span>
                         <span class="text-xs text-surface-400 cursor-help"

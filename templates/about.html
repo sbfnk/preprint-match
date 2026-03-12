@@ -59,17 +59,38 @@
         <h2 class="text-xl font-semibold text-surface-900 dark:text-white mt-10 mb-3">How it works</h2>
 
         <p>
-            We train on {{ "{:,}".format(meta.n_papers_training) }} medRxiv preprints that were subsequently published in peer-reviewed journals. Each paper is encoded into a 768-dimensional vector using
+            We look at which previously-published papers are most similar to a new preprint, and use that to estimate which journal would accept it. The model learns what makes a paper fit for one journal over another — topic, methods, writing style, scope — from {{ "{:,}".format(meta.n_papers_training) }} preprints that have already been published.
+        </p>
+
+        <p>
+            Under the hood: each paper is encoded into a numerical vector using
             <a href="https://huggingface.co/allenai/specter2" class="text-brand-600 dark:text-brand-400 hover:underline">SPECTER2</a>,
-            a scientific document embedding model trained on citation graphs. We fine-tune the model's adapter layer using contrastive learning: papers published in the same journal are pulled together in embedding space, while papers from different journals are pushed apart. To make the task harder (and the embeddings better), training batches group papers from the same medRxiv category, so the model has to distinguish between, say, two infectious disease papers headed for different journals, rather than between an infectious disease paper and a cardiology one.
+            a scientific document embedding model trained on citation graphs. We fine-tune it using contrastive learning so that papers published in the same journal end up closer together, with training batches grouped by medRxiv category to force the model to make fine-grained distinctions.
+            Predictions combine a nearest-neighbour lookup with a logistic regression classifier, blended 90/10 and tuned on a held-out validation set. Probabilities are calibrated using isotonic regression so that when the model says "15% chance of PLOS ONE", roughly 15% of such predictions turn out correct.
+        </p>
+
+        <h2 class="text-xl font-semibold text-surface-900 dark:text-white mt-10 mb-3">How well it works</h2>
+
+        <p>
+            We evaluate on {{ meta.n_journals }} journals that have at least 10 papers in the training set — about 70% of all published preprints land in one of these. On a held-out test set of 6,950 papers, the model gets the exact journal right 20% of the time (versus under 1% by random chance), and the correct journal appears in the top 10 predictions 61% of the time. For the 20 most common journals, the top-10 hit rate is 82%.
         </p>
 
         <p>
-            Predictions combine two approaches: a nearest-neighbour lookup (which papers in the training set are most similar?) and a logistic regression classifier (which journal do the embedding features point to?). The two are blended with a 90/10 classifier/kNN weight, tuned on a held-out validation set. Probabilities are calibrated using isotonic regression so that when the model says "15% chance of PLOS ONE", roughly 15% of such predictions are correct.
+            Performance drops for less common journals: about 10% exact accuracy for mid-frequency journals, and the model cannot reliably predict journals with fewer than 10 training papers. Preprints headed for niche journals outside the {{ meta.n_journals }} we cover will still get predictions, but only among the journals we know about — the model cannot tell you it doesn't know.
+        </p>
+
+        <h2 class="text-xl font-semibold text-surface-900 dark:text-white mt-10 mb-3">Limitations</h2>
+
+        <p>
+            This is a content-based classifier. It recognises which journals tend to publish which kinds of content. It does not assess quality, novelty, or editorial fit — it cannot tell you whether a paper will survive peer review, only that it looks like the kind of paper a journal has published before.
         </p>
 
         <p>
-            On our test set (6,950 papers, 316 journals), the model gets the exact journal right 20% of the time, and the correct journal appears in the top 10 predictions 61% of the time. For the 20 most common journals, the top-10 list is correct 82% of the time.
+            The training data consists entirely of preprints that were successfully published. Preprints that were never published, or took a very different path, are absent. The model has no temporal awareness — publication patterns shift over time, and a paper matching a journal's 2020 output may not match its 2026 editorial direction.
+        </p>
+
+        <p>
+            Probabilities are well-calibrated on average, but less reliable for low-frequency journals where training data is sparse.
         </p>
 
         <p>

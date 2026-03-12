@@ -60,8 +60,10 @@ def load_data(predictions_dir):
     # Precompute sorted probability columns for fast percentile lookups
     if DATA["proba"] is not None:
         DATA["proba_sorted"] = np.sort(DATA["proba"], axis=0)
+        DATA["proba_mean"] = DATA["proba"].mean(axis=0)
     else:
         DATA["proba_sorted"] = None
+        DATA["proba_mean"] = None
 
     # Paper dates as date objects for filtering
     DATA["paper_dates"] = []
@@ -179,12 +181,18 @@ def journal_view(name):
     j_idx = DATA["journal_by_name"][name]
     journal_info = DATA["journals"][j_idx]
 
+    # Average probability across all preprints for this journal (baseline rate)
+    baseline_pct = None
+    if DATA["proba_mean"] is not None:
+        baseline_pct = float(DATA["proba_mean"][j_idx]) * 100
+
     return render_template(
         "journal.html",
         journal_name=name,
         journal_info=journal_info,
         papers=papers,
         days=days,
+        baseline_pct=baseline_pct,
         meta=DATA["meta"],
     )
 
