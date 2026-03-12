@@ -45,7 +45,7 @@ def load_data(predictions_dir):
     # Load full probability matrix for per-paper and per-journal views
     proba_path = d / "proba_matrix.npz"
     if proba_path.exists():
-        DATA["proba"] = np.load(proba_path)["proba"]
+        DATA["proba"] = np.load(proba_path)["proba"].astype(np.float32)
     else:
         DATA["proba"] = None
 
@@ -60,7 +60,7 @@ def load_data(predictions_dir):
     if DATA["proba"] is not None:
         proba = DATA["proba"]
         # For each journal column, rank papers (higher prob = higher percentile)
-        percentile_ranks = np.zeros_like(proba)
+        percentile_ranks = np.zeros_like(proba, dtype=np.float32)
         n = proba.shape[0]
         for j in range(proba.shape[1]):
             col = proba[:, j]
