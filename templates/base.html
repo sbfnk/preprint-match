@@ -9,54 +9,95 @@
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
 
+        /* --- Probability bars with animated shimmer --- */
         .prob-bar {
-            background: linear-gradient(90deg, #3376fc 0%, #599bff 100%);
+            background: linear-gradient(90deg, #3376fc 0%, #599bff 50%, #3376fc 100%);
+            background-size: 200% 100%;
+            animation: barShimmer 3s ease-in-out infinite;
             transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
         }
+        @keyframes barShimmer {
+            0%, 100% { background-position: 0% 0; }
+            50% { background-position: 100% 0; }
+        }
+
+        /* --- Card hover with glow --- */
         .card-hover {
-            transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+            transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
         }
         .card-hover:hover {
-            transform: translateY(-1px);
-        }
-        .fade-in {
-            animation: fadeIn 0.3s ease-out;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(8px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .search-glow:focus {
-            box-shadow: 0 0 0 4px rgba(51, 118, 252, 0.2);
-            border-color: #599bff;
-        }
-        .gradient-bg {
-            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 50%, #f1f5f9 100%);
-        }
-        @media (prefers-color-scheme: dark) {
-            .gradient-bg {
-                background: linear-gradient(135deg, #0a0e1a 0%, #151b30 50%, #1c2440 100%);
-            }
-            .card-hover:hover {
-                box-shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.4);
-            }
+            transform: translateY(-2px);
+            border-color: rgba(51, 118, 252, 0.3);
         }
         @media (prefers-color-scheme: light) {
             .card-hover:hover {
-                box-shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.1);
+                box-shadow: 0 8px 30px -8px rgba(51, 118, 252, 0.15), 0 4px 12px -4px rgba(0, 0, 0, 0.08);
             }
         }
+        @media (prefers-color-scheme: dark) {
+            .card-hover:hover {
+                box-shadow: 0 8px 30px -8px rgba(51, 118, 252, 0.2), 0 4px 12px -4px rgba(0, 0, 0, 0.4);
+            }
+        }
+
+        /* --- Fade in --- */
+        .fade-in {
+            animation: fadeIn 0.4s ease-out both;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* --- Search bar effects --- */
+        .search-glow {
+            transition: box-shadow 0.3s ease, border-color 0.3s ease, transform 0.2s ease;
+        }
+        .search-glow:focus {
+            box-shadow: 0 0 0 4px rgba(51, 118, 252, 0.15), 0 8px 40px -8px rgba(51, 118, 252, 0.2);
+            border-color: #599bff;
+            transform: scale(1.005);
+        }
+
+        /* --- Hero gradient with mesh effect --- */
+        .gradient-bg {
+            background:
+                radial-gradient(ellipse 80% 60% at 20% 40%, rgba(51, 118, 252, 0.06) 0%, transparent 70%),
+                radial-gradient(ellipse 60% 80% at 80% 60%, rgba(89, 155, 255, 0.05) 0%, transparent 70%),
+                linear-gradient(135deg, #f8fafc 0%, #eef2f7 40%, #f1f5f9 100%);
+        }
+        @media (prefers-color-scheme: dark) {
+            .gradient-bg {
+                background:
+                    radial-gradient(ellipse 80% 60% at 20% 40%, rgba(51, 118, 252, 0.08) 0%, transparent 70%),
+                    radial-gradient(ellipse 60% 80% at 80% 60%, rgba(89, 155, 255, 0.06) 0%, transparent 70%),
+                    linear-gradient(135deg, #0a0e1a 0%, #111827 40%, #0f172a 100%);
+            }
+        }
+
+        /* --- Glass morphism --- */
         .glass {
             background: rgba(255, 255, 255, 0.12);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            transition: background 0.2s, border-color 0.2s;
+        }
+        .glass:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.25);
         }
         @media (prefers-color-scheme: light) {
             .glass {
                 background: rgba(255, 255, 255, 0.7);
-                border: 1px solid rgba(0, 0, 0, 0.08);
+                border: 1px solid rgba(0, 0, 0, 0.06);
+            }
+            .glass:hover {
+                background: rgba(255, 255, 255, 0.9);
+                border-color: rgba(51, 118, 252, 0.2);
             }
         }
+
+        /* --- Search result highlight --- */
         mark {
             background: rgba(51, 118, 252, 0.15);
             color: #3376fc;
@@ -64,10 +105,40 @@
             padding: 0 2px;
         }
         @media (prefers-color-scheme: dark) {
-            mark {
-                color: #599bff;
+            mark { color: #599bff; }
+        }
+
+        /* --- Journal/paper list row hover glow (dark mode) --- */
+        @media (prefers-color-scheme: dark) {
+            .journal-row-hover:hover {
+                box-shadow: inset 2px 0 0 #599bff;
             }
         }
+
+        /* --- Stat card shimmer on load --- */
+        .stat-card {
+            position: relative;
+            overflow: hidden;
+        }
+        .stat-card::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%);
+            transform: translateX(-100%);
+            animation: statShimmer 1.5s ease-out 0.3s forwards;
+        }
+        @keyframes statShimmer {
+            to { transform: translateX(100%); }
+        }
+        @media (prefers-color-scheme: dark) {
+            .stat-card::after {
+                background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.06) 50%, transparent 100%);
+            }
+        }
+
+        /* --- Smooth scroll behaviour --- */
+        html { scroll-behavior: smooth; }
     </style>
 </head>
 <body class="h-full bg-surface-50 text-surface-900 dark:bg-surface-950 dark:text-gray-100 antialiased">
