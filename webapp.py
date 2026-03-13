@@ -213,9 +213,21 @@ def paper_view(doi):
 
     # Get journal probabilities and percentiles for this paper
     predictions = []
+    prediction_set_size = 0
     if DATA["proba"] is not None:
         row = DATA["proba"][idx]
         ranked = np.argsort(row)[::-1]
+
+        # Compute 50% prediction set: the smallest set of journals that
+        # accounts for half the total probability mass
+        cumsum = 0.0
+        coverage_target = 0.50
+        for j_idx in ranked:
+            cumsum += float(row[j_idx])
+            prediction_set_size += 1
+            if cumsum >= coverage_target:
+                break
+
         for rank, j_idx in enumerate(ranked[:30]):
             j = DATA["journals"][j_idx]
             prob = float(row[j_idx])
@@ -229,12 +241,14 @@ def paper_view(doi):
                 "publisher_type": j.get("publisher_type", ""),
                 "rank": rank + 1,
                 "lift": prob / baseline if baseline > 0 else None,
+                "in_prediction_set": rank < prediction_set_size,
             })
 
     return render_template(
         "paper.html",
         paper=paper,
         predictions=predictions,
+        prediction_set_size=prediction_set_size,
         meta=DATA["meta"],
     )
 
@@ -364,7 +378,7 @@ def top_pct_filter(percentile):
     """Format percentile as 'Top X%' label."""
     complement = 100 - percentile
     if complement < 0.1:
-        return "#1"
+        return "Top 0.1%"
     elif complement < 1:
         return f"Top {complement:.1f}%"
     else:
