@@ -163,6 +163,36 @@ Probabilities are calibrated using isotonic regression fitted on the validation 
 
 The raw probabilities are already well-calibrated — temperature scaling barely changes them (T ≈ 1.0). The model never assigns more than ~57% to any single journal. ECE of 0.028 means predictions are off by about 3 percentage points on average.
 
+## Prediction Sets
+
+### Method
+
+For each paper, journals are included in descending probability order until the cumulative probability reaches a target coverage level. The resulting set is the smallest group of journals that accounts for that fraction of the probability mass. This is related to conformal prediction, but uses the calibrated probabilities directly rather than a separate conformal calibration step.
+
+### Results (test set, min-10 filter, 4,811 papers)
+
+| Target coverage | Empirical coverage | Median set size | Mean set size | p90 set size |
+|---|---|---|---|---|
+| 50% | 49.9% | 6 | 6.0 | 10 |
+| 80% | 78.5% | 22 | 24.1 | 42 |
+| 90% | 88.4% | 44 | 47.2 | 78 |
+| 95% | 91.8% | 66 | 69.0 | 108 |
+
+The 50% level is well-calibrated: the true journal falls in the set almost exactly half the time. Higher coverage levels slightly undershoot their targets (88.4% vs 90%, 91.8% vs 95%).
+
+**Per-tier (90% coverage)**:
+
+| Tier | Coverage | Median set size | n |
+|---|---|---|---|
+| Top-20 | 97.1% | 45 | 1,707 |
+| Top-50 | 95.3% | 45 | 2,419 |
+| Mid-tail | 86.3% | 44 | 1,092 |
+| Long-tail | 77.2% | 42 | 1,300 |
+
+Coverage is best for common journals (97% for top-20) and drops for rarer ones (77% for long-tail). Set sizes are similar across tiers — the model spreads probability comparably regardless of the true journal's frequency.
+
+The 50% prediction set (median 6 journals) is compact enough to display in the webapp. Higher coverage levels require too many journals (44+ out of 501) to be useful as a visual indicator.
+
 ## Summary
 
 | Method | acc@1 | acc@10 | MRR | Notes |
