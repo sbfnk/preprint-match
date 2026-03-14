@@ -8,8 +8,7 @@
     <script>
     // Apply dark mode before render to prevent flash
     (function() {
-        var t = localStorage.getItem('theme');
-        if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
             document.documentElement.classList.add('dark');
         }
     })();
@@ -193,14 +192,10 @@
     {% block scripts %}{% endblock %}
     <script>
     function toggleTheme() {
-        var isDark = document.documentElement.classList.toggle('dark');
-        localStorage.setItem('theme', isDark ? 'dark' : 'light');
+        document.documentElement.classList.toggle('dark');
     }
-    // Listen for system preference changes (only when no manual override)
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
-        if (!localStorage.getItem('theme')) {
-            document.documentElement.classList.toggle('dark', e.matches);
-        }
+        document.documentElement.classList.toggle('dark', e.matches);
     });
     function copyLink() {
         navigator.clipboard.writeText(window.location.href);
