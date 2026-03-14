@@ -15,6 +15,9 @@ COPY predictions/papers.json predictions/
 COPY predictions/journals.json predictions/
 COPY predictions/meta.json predictions/
 
+# Training dataset for search and ground-truth display
+COPY labeled_dataset_slim.json labeled_dataset.json
+
 EXPOSE 8080
 
 CMD ["gunicorn", "webapp:app", "--bind", "0.0.0.0:8080", "--workers", "2", "--threads", "4", "--timeout", "120", "--preload"]

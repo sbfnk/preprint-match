@@ -15,8 +15,11 @@ import json
 import argparse
 import os
 import re
+import sqlite3
 import sys
+import threading
 from datetime import datetime, timedelta
+from functools import wraps
 from pathlib import Path
 
 import numpy as np
@@ -83,6 +86,43 @@ def load_data(predictions_dir):
         letters.setdefault(first, []).append(j)
     DATA["journal_letters"] = dict(sorted(letters.items()))
 
+    # Load training data for search and ground-truth display
+    dataset_path = os.environ.get("TRAINING_DATASET", "labeled_dataset.json")
+    if Path(dataset_path).exists():
+        with open(dataset_path) as f:
+            training = json.load(f)
+        # Map preprint DOI → actual journal for ground truth
+        DATA["true_journal"] = {
+            p["preprint_doi"]: p["journal"] for p in training
+            if p.get("preprint_doi") and p.get("journal")
+        }
+        # Add training papers that aren't already in predictions
+        existing_dois = DATA["paper_by_doi"]
+        DATA["training_papers"] = []
+        for p in training:
+            doi = p.get("preprint_doi", "")
+            if doi and doi not in existing_dois:
+                DATA["training_papers"].append({
+                    "doi": doi,
+                    "title": p.get("title", ""),
+                    "abstract": p.get("abstract", ""),
+                    "category": p.get("category", ""),
+                    "date": p.get("date", ""),
+                    "authors": p.get("authors", ""),
+                    "journal": p.get("journal", ""),
+                    "source": p.get("source", "medrxiv"),
+                })
+        # Index training papers by DOI
+        DATA["training_by_doi"] = {
+            p["doi"]: p for p in DATA["training_papers"]
+        }
+        print(f"Loaded {len(DATA['true_journal'])} ground-truth labels, "
+              f"{len(DATA['training_papers'])} training-only papers")
+    else:
+        DATA["true_journal"] = {}
+        DATA["training_papers"] = []
+        DATA["training_by_doi"] = {}
+
 
 def percentile(prob_value, j_idx):
     """Compute percentile rank of a probability value for a journal column.
@@ -148,6 +188,86 @@ def get_journal_rankings(journal_name, days=None, top_k=20):
     return results
 
 
+# ---------- Analytics ----------
+
+ANALYTICS_DB = os.environ.get("ANALYTICS_DB", "analytics.db")
+STATS_PASSWORD = os.environ.get("STATS_PASSWORD", "")
+
+
+def get_analytics_db():
+    """Get thread-local SQLite connection."""
+    t = threading.current_thread()
+    if not hasattr(t, "_analytics_db"):
+        conn = sqlite3.connect(ANALYTICS_DB, timeout=10)
+        conn.execute("PRAGMA journal_mode=WAL")
+        t._analytics_db = conn
+    return t._analytics_db
+
+
+def init_analytics_db():
+    """Create the hits table if it doesn't exist."""
+    conn = sqlite3.connect(ANALYTICS_DB)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS hits (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            path TEXT NOT NULL,
+            referrer TEXT,
+            region TEXT,
+            device TEXT,
+            browser TEXT
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_hits_ts ON hits(timestamp)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_hits_path ON hits(path)")
+    conn.commit()
+    conn.close()
+
+
+def parse_ua(ua_string):
+    """Extract device type and browser family from User-Agent."""
+    ua = (ua_string or "").lower()
+    if "bot" in ua or "crawl" in ua or "spider" in ua:
+        device = "bot"
+    elif "mobile" in ua or "android" in ua:
+        device = "mobile"
+    elif "tablet" in ua or "ipad" in ua:
+        device = "tablet"
+    else:
+        device = "desktop"
+    if "firefox" in ua:
+        browser = "Firefox"
+    elif "edg" in ua:
+        browser = "Edge"
+    elif "chrome" in ua or "chromium" in ua:
+        browser = "Chrome"
+    elif "safari" in ua:
+        browser = "Safari"
+    else:
+        browser = "Other"
+    return device, browser
+
+
+def require_stats_auth(f):
+    """Password check via query param or basic auth."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not STATS_PASSWORD:
+            abort(403)
+        if request.args.get("key") == STATS_PASSWORD:
+            return f(*args, **kwargs)
+        auth = request.authorization
+        if auth and auth.password == STATS_PASSWORD:
+            return f(*args, **kwargs)
+        return ("Unauthorised", 401,
+                {"WWW-Authenticate": 'Basic realm="Stats"'})
+    return decorated
+
+
+init_analytics_db()
+
+
 # ---------- Routes ----------
 
 @app.route("/")
@@ -206,20 +326,30 @@ def journal_view(name):
 def paper_view(doi):
     """Paper detail — predicted journal distribution."""
     idx = DATA["paper_by_doi"].get(doi)
-    if idx is None:
+    training_paper = DATA["training_by_doi"].get(doi)
+
+    if idx is None and training_paper is None:
         abort(404)
 
-    paper = DATA["papers"][idx]
+    # Use prediction paper if available, otherwise training paper
+    if idx is not None:
+        paper = DATA["papers"][idx]
+    else:
+        paper = training_paper
+
+    # Ground truth: did this paper end up in a known journal?
+    true_journal = DATA["true_journal"].get(doi)
+    is_training = doi in DATA["true_journal"]
 
     # Get journal probabilities and percentiles for this paper
     predictions = []
     prediction_set_size = 0
-    if DATA["proba"] is not None:
+    true_journal_rank = None
+    if idx is not None and DATA["proba"] is not None:
         row = DATA["proba"][idx]
         ranked = np.argsort(row)[::-1]
 
-        # Compute 50% prediction set: the smallest set of journals that
-        # accounts for half the total probability mass
+        # Compute 50% prediction set
         cumsum = 0.0
         coverage_target = 0.50
         for j_idx in ranked:
@@ -232,6 +362,9 @@ def paper_view(doi):
             j = DATA["journals"][j_idx]
             prob = float(row[j_idx])
             baseline = float(DATA["proba_mean"][j_idx]) if DATA["proba_mean"] is not None else 0
+            is_true = (true_journal and j["name"] == true_journal)
+            if is_true:
+                true_journal_rank = rank + 1
             predictions.append({
                 "journal": j["name"],
                 "probability": prob,
@@ -242,6 +375,7 @@ def paper_view(doi):
                 "rank": rank + 1,
                 "lift": prob / baseline if baseline > 0 else None,
                 "in_prediction_set": rank < prediction_set_size,
+                "is_true": is_true,
             })
 
     return render_template(
@@ -249,6 +383,109 @@ def paper_view(doi):
         paper=paper,
         predictions=predictions,
         prediction_set_size=prediction_set_size,
+        true_journal=true_journal,
+        true_journal_rank=true_journal_rank,
+        true_journal_in_set=true_journal in DATA["journal_by_name"] if true_journal else False,
+        is_training=is_training,
+        meta=DATA["meta"],
+    )
+
+
+# ---------- Analytics routes ----------
+
+@app.route("/hit", methods=["POST"])
+def hit():
+    """Record a page view via navigator.sendBeacon."""
+    data = request.get_json(silent=True, force=True) or {}
+    path = (data.get("p") or "")[:500]
+    referrer = (data.get("r") or "")[:500] or None
+    if referrer and "preprints.epiforecasts.io" in referrer:
+        referrer = None
+
+    region = request.headers.get("Fly-Region", "unknown")
+    device, browser = parse_ua(request.headers.get("User-Agent", ""))
+    if device == "bot":
+        return "", 204
+
+    try:
+        conn = get_analytics_db()
+        conn.execute(
+            "INSERT INTO hits (timestamp, path, referrer, region, device, browser) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+             path, referrer, region, device, browser),
+        )
+        conn.commit()
+    except Exception:
+        pass
+    return "", 204
+
+
+@app.route("/stats")
+@require_stats_auth
+def stats():
+    """Analytics dashboard."""
+    days = request.args.get("days", type=int, default=30)
+    cutoff = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
+
+    conn = get_analytics_db()
+    conn.row_factory = sqlite3.Row
+
+    total = conn.execute(
+        "SELECT COUNT(*) FROM hits WHERE timestamp >= ?", (cutoff,)
+    ).fetchone()[0]
+
+    daily = conn.execute(
+        "SELECT DATE(timestamp) as day, COUNT(*) as count "
+        "FROM hits WHERE timestamp >= ? GROUP BY day ORDER BY day",
+        (cutoff,),
+    ).fetchall()
+
+    pages = conn.execute(
+        "SELECT path, COUNT(*) as count "
+        "FROM hits WHERE timestamp >= ? "
+        "GROUP BY path ORDER BY count DESC LIMIT 30",
+        (cutoff,),
+    ).fetchall()
+
+    referrers = conn.execute(
+        "SELECT referrer, COUNT(*) as count "
+        "FROM hits WHERE timestamp >= ? AND referrer IS NOT NULL "
+        "GROUP BY referrer ORDER BY count DESC LIMIT 15",
+        (cutoff,),
+    ).fetchall()
+
+    devices = conn.execute(
+        "SELECT device, COUNT(*) as count "
+        "FROM hits WHERE timestamp >= ? GROUP BY device ORDER BY count DESC",
+        (cutoff,),
+    ).fetchall()
+
+    browsers = conn.execute(
+        "SELECT browser, COUNT(*) as count "
+        "FROM hits WHERE timestamp >= ? GROUP BY browser ORDER BY count DESC",
+        (cutoff,),
+    ).fetchall()
+
+    regions = conn.execute(
+        "SELECT region, COUNT(*) as count "
+        "FROM hits WHERE timestamp >= ? "
+        "GROUP BY region ORDER BY count DESC LIMIT 20",
+        (cutoff,),
+    ).fetchall()
+
+    conn.row_factory = None
+
+    return render_template(
+        "stats.html",
+        total=total,
+        daily=daily,
+        pages=pages,
+        referrers=referrers,
+        devices=devices,
+        browsers=browsers,
+        regions=regions,
+        days=days,
         meta=DATA["meta"],
     )
 
@@ -266,7 +503,9 @@ def api_search():
     # Strip DOI URL prefixes so users can paste full URLs
     for prefix in ("https://doi.org/", "http://doi.org/",
                     "https://www.medrxiv.org/content/",
-                    "http://www.medrxiv.org/content/"):
+                    "http://www.medrxiv.org/content/",
+                    "https://www.biorxiv.org/content/",
+                    "http://www.biorxiv.org/content/"):
         if q.lower().startswith(prefix):
             q = q[len(prefix):]
             break
@@ -305,25 +544,24 @@ def api_search():
     journals = (exact + prefix + word_start + substring)[:15]
 
     # --- Paper search (by DOI or title) ---
+    # Search both prediction papers and training-only papers
+    all_papers = list(DATA["papers"]) + DATA["training_papers"]
     papers = []
     is_doi = q.startswith("10.") or q_lower.startswith("doi:")
 
     if is_doi:
-        # DOI lookup
-        for p in DATA["papers"]:
+        for p in all_papers:
             if q_lower in p["doi"].lower():
                 papers.append({
                     "doi": p["doi"],
                     "title": fix_title_filter(p.get("title", "")),
                     "category": p.get("category", ""),
                     "date": p.get("date", ""),
+                    "journal": p.get("journal") or DATA["true_journal"].get(p["doi"]),
                 })
-                if len(papers) >= 5:
-                    break
     elif len(q) >= 3:
-        # Title search — all query words must appear (any order)
         words = q_lower.split()
-        for p in DATA["papers"]:
+        for p in all_papers:
             title_lower = p.get("title", "").lower()
             if all(w in title_lower for w in words):
                 papers.append({
@@ -331,9 +569,12 @@ def api_search():
                     "title": fix_title_filter(p.get("title", "")),
                     "category": p.get("category", ""),
                     "date": p.get("date", ""),
+                    "journal": p.get("journal") or DATA["true_journal"].get(p["doi"]),
                 })
-                if len(papers) >= 5:
-                    break
+
+    # Sort by date (newest first) and limit
+    papers.sort(key=lambda x: x.get("date", ""), reverse=True)
+    papers = papers[:10]
 
     return jsonify({"journals": journals, "papers": papers})
 
@@ -407,8 +648,10 @@ def lift_label_filter(lift):
 
 
 @app.template_filter("doi_url")
-def doi_url_filter(doi):
-    """Convert DOI to medRxiv URL."""
+def doi_url_filter(doi, source="medrxiv"):
+    """Convert DOI to preprint server URL."""
+    if source == "biorxiv":
+        return f"https://www.biorxiv.org/content/{doi}"
     return f"https://www.medrxiv.org/content/{doi}"
 
 

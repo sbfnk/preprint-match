@@ -13,6 +13,7 @@ model-v2/
 *.tar.gz
 *.tar
 labeled_*.json
+!labeled_dataset_slim.json
 *_progress*.jsonl
 *.npy
 *.pkl
