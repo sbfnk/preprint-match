@@ -26,7 +26,7 @@ from pathlib import Path
 import numpy as np
 from tqdm import tqdm
 
-from extract_labeled_data import fetch_medrxiv_preprints
+from extract_labeled_data import fetch_preprints
 from predict_journal import JournalPredictor
 
 
@@ -53,8 +53,9 @@ def save_state(state, path="refresh_state.json"):
 
 # ---------- Fetch new preprints ----------
 
-def fetch_new_preprints(days, training_dois, processed_dois):
-    """Fetch recent preprints from medRxiv API, filtering known DOIs.
+def fetch_new_preprints(days, training_dois, processed_dois,
+                        servers=("medrxiv",)):
+    """Fetch recent preprints from medRxiv/bioRxiv APIs, filtering known DOIs.
 
     Returns ALL preprints (not just published ones), deduplicated by DOI
     (keeping latest version).
@@ -62,19 +63,20 @@ def fetch_new_preprints(days, training_dois, processed_dois):
     end_date = datetime.now().strftime("%Y-%m-%d")
     start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
 
-    print(f"Fetching preprints from {start_date} to {end_date}...",
-          file=sys.stderr)
-    raw = fetch_medrxiv_preprints(start_date, end_date)
-    print(f"  Fetched {len(raw)} records from API", file=sys.stderr)
-
     known_dois = training_dois | processed_dois
-
-    # Deduplicate by DOI (later versions overwrite earlier)
     by_doi = {}
-    for p in raw:
-        doi = p.get("doi", "")
-        if doi and doi not in known_dois:
-            by_doi[doi] = p
+
+    for server in servers:
+        print(f"Fetching {server} preprints from {start_date} to {end_date}...",
+              file=sys.stderr)
+        raw = fetch_preprints(start_date, end_date, server)
+        print(f"  Fetched {len(raw)} records from {server} API", file=sys.stderr)
+
+        for p in raw:
+            doi = p.get("doi", "")
+            if doi and doi not in known_dois:
+                p["_source"] = server
+                by_doi[doi] = p
 
     papers = list(by_doi.values())
     print(f"  {len(papers)} new preprints after filtering "
@@ -238,7 +240,10 @@ def check_fulltext_updates(existing_papers, fulltext_map):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Weekly refresh: score new medRxiv preprints")
+        description="Weekly refresh: score new preprints")
+    parser.add_argument("--server", default="both",
+                        choices=["medrxiv", "biorxiv", "both"],
+                        help="Preprint server(s) to fetch from (default: both)")
     parser.add_argument("--model-dir", default="model",
                         help="Saved model directory (default: model)")
     parser.add_argument("--dataset", default="labeled_dataset.json",
@@ -276,9 +281,11 @@ def main():
     existing_papers, existing_dois = load_existing_predictions(args.output_dir)
 
     # Fetch new preprints
+    servers = ["medrxiv", "biorxiv"] if args.server == "both" else [args.server]
     all_known = training_dois | processed_dois | existing_dois
     papers = fetch_new_preprints(args.days, training_dois,
-                                 processed_dois | existing_dois)
+                                 processed_dois | existing_dois,
+                                 servers=servers)
 
     # Full text extraction
     fulltext_map = {}

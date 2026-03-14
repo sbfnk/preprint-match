@@ -49,6 +49,7 @@ jobs:
       - name: Fetch preprints and look up new Crossref labels
         run: |
           python3 extract_labeled_data.py \
+            --server both \
             --start-date 2019-06-01 \
             --end-date $(date +%Y-%m-%d) \
             --output labeled_dataset.json \

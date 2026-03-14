@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
 """
-Extract labeled dataset: medRxiv preprints -> published journal destinations
+Extract labeled dataset: preprints -> published journal destinations
+
+Supports medRxiv and bioRxiv (same API, same structure).
 
 Data flow:
-1. Fetch preprints from medRxiv API (2024 H1 for pilot)
+1. Fetch preprints from medRxiv/bioRxiv API
 2. Filter to those with published DOIs
 3. Look up journal names from Crossref API
 4. Save labeled dataset
 
-Usage: python3 extract_labeled_data.py [--start-date 2024-01-01] [--end-date 2024-06-30] [--output labeled_data.json]
+Usage:
+  python3 extract_labeled_data.py --server medrxiv [--start-date ...] [--output ...]
+  python3 extract_labeled_data.py --server biorxiv [--start-date ...] [--output ...]
+  python3 extract_labeled_data.py --server both   [--start-date ...] [--output ...]
 """
 
 import json
@@ -24,15 +29,19 @@ import sys
 # Crossref API wants an email for polite pool (faster rate limits)
 CROSSREF_EMAIL = "medrxiv-pilot@example.com"  # Replace with real email for production
 
-def fetch_medrxiv_preprints(start_date: str, end_date: str, max_records: Optional[int] = None) -> list:
-    """Fetch preprints from medRxiv API with pagination."""
+def fetch_preprints(start_date: str, end_date: str, server: str = "medrxiv",
+                    max_records: Optional[int] = None) -> list:
+    """Fetch preprints from medRxiv or bioRxiv API with pagination."""
+    if server not in ("medrxiv", "biorxiv"):
+        raise ValueError(f"Unknown server: {server}")
+
     preprints = []
     cursor = 0
     batch_size = 100  # API returns max 100 per request
 
     while True:
-        url = f"https://api.medrxiv.org/details/medrxiv/{start_date}/{end_date}/{cursor}"
-        print(f"Fetching medRxiv cursor={cursor}...", file=sys.stderr)
+        url = f"https://api.biorxiv.org/details/{server}/{start_date}/{end_date}/{cursor}"
+        print(f"Fetching {server} cursor={cursor}...", file=sys.stderr)
 
         data = None
         for attempt in range(3):
@@ -61,7 +70,7 @@ def fetch_medrxiv_preprints(start_date: str, end_date: str, max_records: Optiona
             break
 
         # Check if we've fetched all
-        total = data.get('messages', [{}])[0].get('total', 0)
+        total = int(data.get('messages', [{}])[0].get('total', 0))
         if cursor >= total:
             break
 
@@ -153,6 +162,7 @@ def build_labeled_dataset(preprints: list, progress_file: Optional[str] = None) 
                     'journal': journal_info['journal'],
                     'publisher': journal_info['publisher'],
                     'citation_count': journal_info['citation_count'],
+                    'source': preprint.get('_source', 'medrxiv'),
                 }
                 labeled.append(record)
 
@@ -166,7 +176,10 @@ def build_labeled_dataset(preprints: list, progress_file: Optional[str] = None) 
     return labeled
 
 def main():
-    parser = argparse.ArgumentParser(description='Extract labeled medRxiv dataset')
+    parser = argparse.ArgumentParser(description='Extract labeled preprint dataset')
+    parser.add_argument('--server', default='medrxiv',
+                        choices=['medrxiv', 'biorxiv', 'both'],
+                        help='Preprint server to fetch from')
     parser.add_argument('--start-date', default='2024-01-01', help='Start date (YYYY-MM-DD)')
     parser.add_argument('--end-date', default='2024-06-30', help='End date (YYYY-MM-DD)')
     parser.add_argument('--output', default='labeled_data.json', help='Output file')
@@ -175,9 +188,23 @@ def main():
     parser.add_argument('--doi-year', help='Filter to DOIs from this year (e.g., 2024)')
     args = parser.parse_args()
 
-    print(f"Fetching preprints from {args.start_date} to {args.end_date}...", file=sys.stderr)
-    preprints = fetch_medrxiv_preprints(args.start_date, args.end_date, args.max_preprints)
-    print(f"Fetched {len(preprints)} preprints", file=sys.stderr)
+    servers = ['medrxiv', 'biorxiv'] if args.server == 'both' else [args.server]
+
+    all_preprints = []
+    for server in servers:
+        print(f"Fetching {server} preprints from {args.start_date} to {args.end_date}...",
+              file=sys.stderr)
+        preprints = fetch_preprints(args.start_date, args.end_date, server,
+                                   args.max_preprints)
+        print(f"Fetched {len(preprints)} {server} preprints", file=sys.stderr)
+
+        # Tag each record with its source
+        for p in preprints:
+            p['_source'] = server
+
+        all_preprints.extend(preprints)
+
+    preprints = all_preprints
 
     # Filter by DOI year if specified (DOI format: 10.1101/YYYY.MM.DD.XXXXXXXX)
     if args.doi_year:

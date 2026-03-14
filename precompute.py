@@ -21,7 +21,7 @@ from pathlib import Path
 
 import numpy as np
 
-from extract_labeled_data import fetch_medrxiv_preprints
+from extract_labeled_data import fetch_preprints
 
 # Publishers whose primary purpose is commercial profit
 _COMMERCIAL_PUBLISHERS = {
@@ -74,27 +74,31 @@ def _classify_publisher(publisher):
     return "nonprofit" if publisher else ""
 
 
-def fetch_all_papers(start_date, end_date, known_dois):
+def fetch_all_papers(start_date, end_date, known_dois,
+                     servers=("medrxiv",)):
     """Fetch preprints month by month, filtering known DOIs."""
     all_papers = {}
     cursor = datetime.strptime(start_date, "%Y-%m-%d")
     end = datetime.strptime(end_date, "%Y-%m-%d")
 
-    while cursor < end:
-        # Use monthly chunks for efficiency
-        chunk_end = min(cursor + timedelta(days=30), end)
-        s = cursor.strftime("%Y-%m-%d")
-        e = chunk_end.strftime("%Y-%m-%d")
-        print(f"  Fetching {s} to {e}...", file=sys.stderr, end=" ")
-        raw = fetch_medrxiv_preprints(s, e, max_records=5000)
-        added = 0
-        for p in raw:
-            doi = p.get("doi", "")
-            if doi and doi not in known_dois and doi not in all_papers:
-                all_papers[doi] = p
-                added += 1
-        print(f"{len(raw)} fetched, {added} new", file=sys.stderr)
-        cursor = chunk_end
+    for server in servers:
+        cursor = datetime.strptime(start_date, "%Y-%m-%d")
+        while cursor < end:
+            chunk_end = min(cursor + timedelta(days=30), end)
+            s = cursor.strftime("%Y-%m-%d")
+            e = chunk_end.strftime("%Y-%m-%d")
+            print(f"  Fetching {server} {s} to {e}...",
+                  file=sys.stderr, end=" ")
+            raw = fetch_preprints(s, e, server, max_records=5000)
+            added = 0
+            for p in raw:
+                doi = p.get("doi", "")
+                if doi and doi not in known_dois and doi not in all_papers:
+                    p["_source"] = server
+                    all_papers[doi] = p
+                    added += 1
+            print(f"{len(raw)} fetched, {added} new", file=sys.stderr)
+            cursor = chunk_end
 
     print(f"  Total: {len(all_papers)} new preprints", file=sys.stderr)
     return list(all_papers.values())
@@ -156,8 +160,11 @@ def main():
                         default="finetuned-specter2/best_adapter")
     parser.add_argument("--days", type=int, default=None,
                         help="Look back N days (default: 365)")
+    parser.add_argument("--server", default="both",
+                        choices=["medrxiv", "biorxiv", "both"],
+                        help="Preprint server(s) to fetch from (default: both)")
     parser.add_argument("--all", action="store_true",
-                        help="Fetch all medRxiv preprints (since June 2019)")
+                        help="Fetch all preprints (since June 2019)")
     parser.add_argument("--skip-fetch", action="store_true",
                         help="Only embed+score existing papers.json")
     parser.add_argument("--fetch-only", action="store_true",
@@ -209,8 +216,11 @@ def main():
             start_date = (datetime.now() - timedelta(days=365)
                           ).strftime("%Y-%m-%d")
 
-        print(f"Fetching {start_date} to {end_date}...", file=sys.stderr)
-        new_papers = fetch_all_papers(start_date, end_date, known)
+        servers = ["medrxiv", "biorxiv"] if args.server == "both" else [args.server]
+        print(f"Fetching {start_date} to {end_date} "
+              f"({', '.join(servers)})...", file=sys.stderr)
+        new_papers = fetch_all_papers(start_date, end_date, known,
+                                      servers=servers)
 
         if new_papers:
             for p in new_papers:
@@ -222,6 +232,7 @@ def main():
                     "date": p.get("date", ""),
                     "authors": p.get("authors", ""),
                     "has_fulltext": bool(p.get("full_text")),
+                    "source": p.get("_source", "medrxiv"),
                 })
 
             # Save papers metadata immediately

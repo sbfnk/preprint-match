@@ -83,7 +83,7 @@ jobs:
           fi
 
           echo "Running precompute..."
-          python precompute.py $ARGS --days 60
+          python precompute.py $ARGS --days 60 --server both
 
       - name: Upload updated prediction state
         env:
