@@ -10,17 +10,17 @@
     <div class="prose prose-surface dark:prose-invert space-y-6 text-surface-600 dark:text-surface-300 leading-relaxed">
 
         <p class="text-lg">
-            Every week, hundreds of new preprints appear on medRxiv. We match them to the journals that publish similar work.
+            Every week, hundreds of new preprints appear on medRxiv and bioRxiv. We match them to the journals that publish similar work.
         </p>
 
         <h2 class="text-xl font-semibold text-surface-900 dark:text-white mt-10 mb-3">What this is</h2>
 
         <p>
-            Preprint Match identifies which journals best match a medRxiv preprint's content. We train on {{ "{:,}".format(meta.n_papers_training) }} preprints that were later published in peer-reviewed journals, learning what makes a paper a good fit for one journal over another.
+            Preprint Match identifies which journals best match a preprint's content. We train on {{ "{:,}".format(meta.n_papers_training) }} medRxiv and bioRxiv preprints that were later published in peer-reviewed journals, learning what makes a paper a good fit for one journal over another.
         </p>
 
         <p>
-            For each of the {{ "{:,}".format(meta.n_papers) }} current preprints on medRxiv, we compute calibrated probability estimates across {{ meta.n_journals }} journals with sufficient training data. You can explore this from either direction: pick a paper and see where it might land, or pick a journal and see what's coming. Preprints destined for niche journals outside this set will still get predictions, but only among the journals we do cover.
+            For each of the {{ "{:,}".format(meta.n_papers) }} current preprints on medRxiv and bioRxiv, we compute calibrated probability estimates across {{ meta.n_journals }} journals with sufficient training data. You can explore this from either direction: pick a paper and see where it might land, or pick a journal and see what's coming. Preprints destined for niche journals outside this set will still get predictions, but only among the journals we do cover.
         </p>
 
         <h2 class="text-xl font-semibold text-surface-900 dark:text-white mt-10 mb-3">Why</h2>
@@ -30,7 +30,7 @@
         </p>
 
         <p>
-            Preprints changed the first part: anyone can share their work immediately. But discovery is still hard. If you work in infectious disease epidemiology, how do you find the preprints that matter to you among thousands posted each month?
+            Preprints changed the first part: anyone can share their work immediately. But discovery is still hard. If you work in infectious disease epidemiology or cell biology, how do you find the preprints that matter to you among thousands posted each month?
         </p>
 
         <p>
@@ -44,7 +44,7 @@
         </p>
 
         <p>
-            bioRxiv, arXiv, and other preprint servers have the same discovery problem. The approach generalises.
+            arXiv and other preprint servers have the same discovery problem. The approach generalises.
         </p>
 
         <p>
@@ -59,13 +59,13 @@
         <h2 class="text-xl font-semibold text-surface-900 dark:text-white mt-10 mb-3">How it works</h2>
 
         <p>
-            We look at which previously-published papers are most similar to a new preprint, and use that to identify which journals publish similar work. The model picks up on topic, methods, writing style and scope from {{ "{:,}".format(meta.n_papers_training) }} preprints that have already been published.
+            We look at which previously-published papers are most similar to a new preprint, and use that to identify which journals publish similar work. The model picks up on topic, methods, writing style and scope from {{ "{:,}".format(meta.n_papers_training) }} medRxiv and bioRxiv preprints that have already been published.
         </p>
 
         <p>
             Each paper's title and abstract are encoded into a numerical vector using
             <a href="https://huggingface.co/allenai/specter2" class="text-brand-600 dark:text-brand-400 hover:underline">SPECTER2</a>,
-            a scientific document embedding model trained on citation graphs. We fine-tune it with contrastive learning so that papers published in the same journal end up closer together, with training batches grouped by medRxiv category to force fine-grained distinctions.
+            a scientific document embedding model trained on citation graphs. We fine-tune it with contrastive learning so that papers published in the same journal end up closer together, with training batches grouped by preprint category to force fine-grained distinctions.
             Predictions combine a nearest-neighbour lookup with a logistic regression classifier, blended 90/10 and tuned on a held-out validation set. Probabilities are calibrated using isotonic regression so that when the model says "15% chance of PLOS ONE", roughly 15% of such predictions turn out correct.
         </p>
 
@@ -91,6 +91,10 @@
 
         <p>
             Probabilities are well-calibrated on average, but less reliable for low-frequency journals where training data is sparse.
+        </p>
+
+        <p>
+            Publication links depend on medRxiv's own metadata, which can lag weeks or months behind the actual publication date. Some papers that have been published will not yet show a publication link here.
         </p>
 
         <p>
