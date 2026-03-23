@@ -123,6 +123,25 @@ def load_data(predictions_dir):
         DATA["training_papers"] = []
         DATA["training_by_doi"] = {}
 
+    # Pre-build search index: combined list with lowercased titles, sorted
+    # newest first, to avoid rebuilding on every search request
+    all_papers = list(DATA["papers"]) + DATA["training_papers"]
+    search_index = []
+    for p in all_papers:
+        search_index.append({
+            "doi": p.get("doi", ""),
+            "doi_lower": p.get("doi", "").lower(),
+            "title": p.get("title", ""),
+            "title_lower": p.get("title", "").lower(),
+            "category": p.get("category", ""),
+            "date": p.get("date", ""),
+            "journal": p.get("journal") or DATA["true_journal"].get(
+                p.get("doi", "")),
+        })
+    search_index.sort(key=lambda x: x["date"], reverse=True)
+    DATA["search_index"] = search_index
+    print(f"Search index: {len(search_index)} papers")
+
 
 def percentile(prob_value, j_idx):
     """Compute percentile rank of a probability value for a journal column.
@@ -544,37 +563,36 @@ def api_search():
     journals = (exact + prefix + word_start + substring)[:15]
 
     # --- Paper search (by DOI or title) ---
-    # Search both prediction papers and training-only papers
-    all_papers = list(DATA["papers"]) + DATA["training_papers"]
+    # Uses pre-built search index (already sorted newest first)
     papers = []
     is_doi = q.startswith("10.") or q_lower.startswith("doi:")
+    limit = 10
 
     if is_doi:
-        for p in all_papers:
-            if q_lower in p["doi"].lower():
+        for p in DATA["search_index"]:
+            if q_lower in p["doi_lower"]:
                 papers.append({
                     "doi": p["doi"],
-                    "title": fix_title_filter(p.get("title", "")),
-                    "category": p.get("category", ""),
-                    "date": p.get("date", ""),
-                    "journal": p.get("journal") or DATA["true_journal"].get(p["doi"]),
+                    "title": fix_title_filter(p["title"]),
+                    "category": p["category"],
+                    "date": p["date"],
+                    "journal": p["journal"],
                 })
+                if len(papers) >= limit:
+                    break
     elif len(q) >= 3:
         words = q_lower.split()
-        for p in all_papers:
-            title_lower = p.get("title", "").lower()
-            if all(w in title_lower for w in words):
+        for p in DATA["search_index"]:
+            if all(w in p["title_lower"] for w in words):
                 papers.append({
                     "doi": p["doi"],
-                    "title": fix_title_filter(p.get("title", "")),
-                    "category": p.get("category", ""),
-                    "date": p.get("date", ""),
-                    "journal": p.get("journal") or DATA["true_journal"].get(p["doi"]),
+                    "title": fix_title_filter(p["title"]),
+                    "category": p["category"],
+                    "date": p["date"],
+                    "journal": p["journal"],
                 })
-
-    # Sort by date (newest first) and limit
-    papers.sort(key=lambda x: x.get("date", ""), reverse=True)
-    papers = papers[:10]
+                if len(papers) >= limit:
+                    break
 
     return jsonify({"journals": journals, "papers": papers})
 
