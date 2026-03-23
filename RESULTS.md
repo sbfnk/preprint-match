@@ -1,18 +1,30 @@
-# Journal Prediction from medRxiv Preprints: Methodology and Results
+# Journal Prediction from Preprints: Methodology and Results
 
 ## Problem
 
-Given a medRxiv preprint, predict which journal it will ultimately be published in. The dataset has 35,366 labelled preprints across 4,402 journals. PLOS ONE, the largest class, has ~1,500 papers; many journals appear only once.
+Given a medRxiv or bioRxiv preprint, predict which journal it will ultimately be published in. The dataset has 165,692 labelled preprints across 7,203 journals. eLife and Nature Communications are the largest classes; many journals appear only once.
 
 ## Dataset
 
-**Source**: [medRxiv](https://www.medrxiv.org/) preprints posted between June 2019 and March 2026 that were subsequently published in peer-reviewed journals.
+**Source**: [medRxiv](https://www.medrxiv.org/) and [bioRxiv](https://www.biorxiv.org/) preprints posted between June 2019 and March 2026 that were subsequently published in peer-reviewed journals.
 
-- **Preprint metadata and full text**: [medRxiv API](https://api.medrxiv.org/) + JATS XML from the Cold Spring Harbor Laboratory S3 archive (`s3://biorxiv-src-monthly/Current_Content/`)
-- **Publication destinations**: medRxiv API `published` field linking preprint DOIs to published DOIs
+- **Preprint metadata and full text**: [bioRxiv API](https://api.biorxiv.org/) + JATS XML from the Cold Spring Harbor Laboratory S3 archive (`s3://biorxiv-src-monthly/Current_Content/`)
+- **Publication destinations**: API `published` field linking preprint DOIs to published DOIs
 - **Journal names**: [Crossref API](https://www.crossref.org/documentation/retrieve-metadata/rest-api/) / Public Data File lookup from published DOIs
 
 **Dataset statistics**:
+
+| Metric | Value |
+|---|---|
+| Total labelled preprints | 165,692 |
+| medRxiv | 35,366 |
+| bioRxiv | 130,326 |
+| With full text | 157,248 (95%) |
+| Unique journals | 7,203 |
+| Journals with ≥10 papers | 1,385 |
+
+<details>
+<summary>Previous dataset (medRxiv only, v2)</summary>
 
 | Metric | Value |
 |---|---|
@@ -22,15 +34,17 @@ Given a medRxiv preprint, predict which journal it will ultimately be published 
 | Journals with ≥10 papers | 316 |
 | medRxiv categories | 51 |
 
+</details>
+
 **Preprocessing**: Journal names were normalised to resolve known case variants (e.g. "Plos One" → "PLOS ONE"). Full text was extracted from JATS XML using a custom parser, excluding reference sections and boilerplate.
 
 ## Evaluation Protocol
 
 All experiments use a stratified 70/10/20 train/val/test split with random seed 42:
 
-- **Training**: 24,844 papers — used for kNN index and classifier training
-- **Validation**: 3,572 papers — used for hyperparameter tuning (ensemble alpha, classifier C, calibration temperature)
-- **Test**: 6,950 papers — used for final evaluation only
+- **Training**: 116,687 papers — used for kNN index and classifier training
+- **Validation**: 16,397 papers — used for hyperparameter tuning (ensemble alpha, classifier C, calibration temperature)
+- **Test**: 32,608 papers — used for final evaluation only
 
 **Stratification**: Papers are grouped by journal. For journals with ≥2 papers, the specified fraction goes to test (minimum 1 per set). Singleton journals are assigned to training only, since a single example cannot appear in both sets.
 
@@ -193,7 +207,30 @@ Coverage is best for common journals (97% for top-20) and drops for rarer ones (
 
 The 50% prediction set (median 6 journals) is compact enough to display in the webapp. Higher coverage levels require too many journals (44+ out of 501) to be useful as a visual indicator.
 
-## Summary
+## Current Results (v4, combined dataset)
+
+Model v4 uses the combined medRxiv + bioRxiv dataset (165,692 papers, 95% with full text). Evaluated on 29,150 test papers across 1,385 journals with ≥10 training papers.
+
+| Method | acc@1 | acc@5 | acc@10 | MRR |
+|---|---|---|---|---|
+| kNN (k=20) | 19.6% | 43.4% | 53.9% | 0.302 |
+| Classifier (C=10) | 22.4% | 51.6% | 65.9% | 0.360 |
+| **Ensemble (alpha=0.1)** | **22.8%** | **52.5%** | **66.6%** | **0.367** |
+
+**Per-tier (ensemble)**:
+
+| Tier | acc@1 | acc@5 | acc@10 | MRR | n |
+|---|---|---|---|---|---|
+| Top-20 | 38.0% | 73.0% | 85.8% | 0.535 | 9,719 |
+| Top-50 | 25.0% | 61.4% | 76.7% | 0.414 | 3,401 |
+| Mid-tail | 13.2% | 38.2% | 52.8% | 0.254 | 16,030 |
+
+The larger dataset substantially increased the number of eligible journals (316 → 1,385) while maintaining strong top-journal performance (acc@10 82% → 86% for top-20). The absolute accuracy numbers are not directly comparable to v2 because the prediction task is much harder with 4× more journals.
+
+## Summary (v2, medRxiv only)
+
+<details>
+<summary>Previous results on medRxiv-only dataset</summary>
 
 | Method | acc@1 | acc@10 | MRR | Notes |
 |---|---|---|---|---|
@@ -202,6 +239,8 @@ The 50% prediction set (median 6 journals) is compact enough to display in the w
 | Classifier (hard-neg, C=10) | 19.4% | 60.9% | 0.327 | min-10, classifier-only |
 | **Ensemble (hard-neg, alpha=0.1)** | **20.0%** | **61.4%** | **0.332** | **min-10, best overall** |
 
-The best method achieves 20.0% acc@1, 61.4% acc@10, and 0.332 MRR on the 316 journals with ≥10 training papers (covering 69% of test papers). For the top-20 journals, the correct journal appears in the top-10 list 82% of the time.
+The best method achieved 20.0% acc@1, 61.4% acc@10, and 0.332 MRR on the 316 journals with ≥10 training papers (covering 69% of test papers). For the top-20 journals, the correct journal appeared in the top-10 list 82% of the time.
 
-What mattered most, roughly in order: restricting to journals with ≥10 training papers (largest single effect), tuning classifier regularisation (C=10 vs C=1, +0.9pp), hard negative fine-tuning (+0.9pp), more kNN neighbours (helps acc@10, slight cost to acc@1). Calibration needed almost no correction.
+</details>
+
+What mattered most, roughly in order: restricting to journals with ≥10 training papers (largest single effect), tuning classifier regularisation (C=10 vs C=1), hard negative fine-tuning, full text (vs title+abstract only). Calibration needed almost no correction.
