@@ -112,6 +112,7 @@
                            class="text-brand-600 dark:text-brand-400 hover:text-brand-500 dark:hover:text-brand-300 transition-colors text-xs font-mono">
                             {{ paper.doi }}
                         </a>
+                        <span class="text-xs text-surface-400 dark:text-surface-500">{{ paper.source | default('medrxiv') | replace('medrxiv', 'medRxiv') | replace('biorxiv', 'bioRxiv') }}</span>
                     </div>
 
                     <!-- Score display -->

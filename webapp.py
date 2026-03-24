@@ -133,10 +133,13 @@ def load_data(predictions_dir):
             "doi_lower": p.get("doi", "").lower(),
             "title": p.get("title", ""),
             "title_lower": p.get("title", "").lower(),
+            "authors": p.get("authors", ""),
+            "authors_lower": p.get("authors", "").lower(),
             "category": p.get("category", ""),
             "date": p.get("date", ""),
             "journal": p.get("journal") or DATA["true_journal"].get(
                 p.get("doi", "")),
+            "source": p.get("source", "medrxiv"),
         })
     search_index.sort(key=lambda x: x["date"], reverse=True)
     DATA["search_index"] = search_index
@@ -574,22 +577,27 @@ def api_search():
                 papers.append({
                     "doi": p["doi"],
                     "title": fix_title_filter(p["title"]),
+                    "authors": p["authors"],
                     "category": p["category"],
                     "date": p["date"],
                     "journal": p["journal"],
+                    "source": p["source"],
                 })
                 if len(papers) >= limit:
                     break
     elif len(q) >= 3:
         words = q_lower.split()
         for p in DATA["search_index"]:
-            if all(w in p["title_lower"] for w in words):
+            if (all(w in p["title_lower"] for w in words)
+                    or all(w in p["authors_lower"] for w in words)):
                 papers.append({
                     "doi": p["doi"],
                     "title": fix_title_filter(p["title"]),
+                    "authors": p["authors"],
                     "category": p["category"],
                     "date": p["date"],
                     "journal": p["journal"],
+                    "source": p["source"],
                 })
                 if len(papers) >= limit:
                     break
