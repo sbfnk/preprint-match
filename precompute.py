@@ -175,23 +175,53 @@ def embed_papers(papers, adapter_path="finetuned-specter2/best_adapter"):
         records, tokenizer, model, device, batch_size=32, stride=256)
 
 
-def compute_proba_matrix(emb, categories, predictor):
-    """Compute full probability matrix: n_papers × n_eligible_journals."""
-    from evaluate_knn import cosine_similarity_chunked, predict_knn
+def compute_proba_matrix(emb, categories, predictor, chunk_size=2000):
+    """Compute full probability matrix: n_papers × n_eligible_journals.
+
+    Processes in chunks to limit memory usage — the full similarity matrix
+    (n_papers × n_train) can be 10s of GB and doesn't fit in CI runners.
+    """
+    from evaluate_knn import predict_knn
     from train_classifier import build_feature_matrix
     from calibrate import ensemble_proba_matrix
     from predict_journal import restrict_and_renormalize, temperature_scale
 
-    sim = cosine_similarity_chunked(emb, predictor.train_emb)
-    knn_preds = predict_knn(sim, predictor.train_journals, k=predictor.k)
-    X = build_feature_matrix(emb, categories, predictor.cat_to_idx, True)
-    clf_proba = predictor.clf.predict_proba(X)
-    proba_full = ensemble_proba_matrix(
-        knn_preds, clf_proba, predictor.all_classes, predictor.alpha)
-    proba = restrict_and_renormalize(proba_full, predictor.eligible_mask)
-    proba = temperature_scale(proba, predictor.T)
-    proba = predictor._apply_isotonic(proba)
-    return proba
+    n = emb.shape[0]
+    n_eligible = int(predictor.eligible_mask.sum())
+    proba_all = np.empty((n, n_eligible), dtype=np.float32)
+
+    # Normalise train embeddings once
+    train_norm = predictor.train_emb / np.linalg.norm(
+        predictor.train_emb, axis=1, keepdims=True)
+
+    for start in range(0, n, chunk_size):
+        end = min(start + chunk_size, n)
+        chunk_emb = emb[start:end]
+        chunk_cats = categories[start:end]
+
+        # kNN: compute similarity for this chunk only
+        chunk_norm = chunk_emb / np.linalg.norm(
+            chunk_emb, axis=1, keepdims=True)
+        sim = chunk_norm @ train_norm.T
+        knn_preds = predict_knn(sim, predictor.train_journals, k=predictor.k)
+
+        # Classifier
+        X = build_feature_matrix(
+            chunk_emb, chunk_cats, predictor.cat_to_idx, True)
+        clf_proba = predictor.clf.predict_proba(X)
+
+        # Ensemble + calibrate
+        proba_chunk = ensemble_proba_matrix(
+            knn_preds, clf_proba, predictor.all_classes, predictor.alpha)
+        proba_chunk = restrict_and_renormalize(
+            proba_chunk, predictor.eligible_mask)
+        proba_chunk = temperature_scale(proba_chunk, predictor.T)
+        proba_chunk = predictor._apply_isotonic(proba_chunk)
+        proba_all[start:end] = proba_chunk
+
+        print(f"  Scored {end}/{n} papers", file=sys.stderr)
+
+    return proba_all
 
 
 def main():
