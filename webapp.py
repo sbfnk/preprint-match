@@ -128,13 +128,14 @@ def load_data(predictions_dir):
     all_papers = list(DATA["papers"]) + DATA["training_papers"]
     search_index = []
     for p in all_papers:
+        title = p.get("title", "")
+        authors = p.get("authors", "")
         search_index.append({
             "doi": p.get("doi", ""),
             "doi_lower": p.get("doi", "").lower(),
-            "title": p.get("title", ""),
-            "title_lower": p.get("title", "").lower(),
-            "authors": p.get("authors", ""),
-            "authors_lower": p.get("authors", "").lower(),
+            "title": title,
+            "authors": authors,
+            "search_text": (title + " " + authors).lower(),
             "category": p.get("category", ""),
             "date": p.get("date", ""),
             "journal": p.get("journal") or DATA["true_journal"].get(
@@ -588,8 +589,7 @@ def api_search():
     elif len(q) >= 3:
         words = q_lower.split()
         for p in DATA["search_index"]:
-            if (all(w in p["title_lower"] for w in words)
-                    or all(w in p["authors_lower"] for w in words)):
+            if all(w in p["search_text"] for w in words):
                 papers.append({
                     "doi": p["doi"],
                     "title": fix_title_filter(p["title"]),
