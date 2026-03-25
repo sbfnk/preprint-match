@@ -28,6 +28,7 @@ from collections import Counter
 
 import joblib
 import numpy as np
+from sklearn.decomposition import PCA
 from sklearn.isotonic import IsotonicRegression
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import LabelEncoder
@@ -62,9 +63,10 @@ class JournalPredictor:
     def __init__(self, embeddings_dir="finetuned-specter2/embeddings",
                  dataset_path="labeled_dataset.json",
                  alpha=0.1, k=20, min_papers=10, classifier_C=10.0,
-                 seed=42):
+                 pca_components=256, seed=42):
         self.min_papers = min_papers
         self.alpha = alpha
+        self.pca_components = pca_components
         self.seed = seed
 
         # Load embeddings
@@ -121,15 +123,25 @@ class JournalPredictor:
         pool_sim = cosine_similarity_chunked(pool_emb, self.train_emb)
         knn_preds_pool = predict_knn(pool_sim, self.train_journals, k=self.k)
 
+        # PCA dimensionality reduction for classifier
+        print(f"  PCA({pca_components})...", file=sys.stderr)
+        self.pca = PCA(n_components=pca_components, random_state=seed)
+        train_pca = self.pca.fit_transform(self.train_emb)
+        val_pca = self.pca.transform(val_emb)
+        test_pca = self.pca.transform(test_emb)
+        pool_pca = self.pca.transform(pool_emb)
+        print(f"    Explained variance: {self.pca.explained_variance_ratio_.sum():.1%}",
+              file=sys.stderr)
+
         # Classifier
         print("  Classifier...", file=sys.stderr)
         X_train = build_feature_matrix(
-            self.train_emb, self.train_categories, self.cat_to_idx, True)
-        X_val = build_feature_matrix(val_emb, val_cats, self.cat_to_idx, True)
+            train_pca, self.train_categories, self.cat_to_idx, True)
+        X_val = build_feature_matrix(val_pca, val_cats, self.cat_to_idx, True)
         X_test = build_feature_matrix(
-            test_emb, test_cats, self.cat_to_idx, True)
+            test_pca, test_cats, self.cat_to_idx, True)
         X_pool = build_feature_matrix(
-            pool_emb, pool_cats, self.cat_to_idx, True)
+            pool_pca, pool_cats, self.cat_to_idx, True)
 
         self.label_encoder = LabelEncoder()
         y_train = self.label_encoder.fit_transform(self.train_journals)
@@ -293,8 +305,9 @@ class JournalPredictor:
         model_dir = Path(model_dir)
         model_dir.mkdir(parents=True, exist_ok=True)
 
-        # Classifier and isotonic calibration
+        # Classifier, PCA, and isotonic calibration
         joblib.dump(self.clf, model_dir / "classifier.joblib")
+        joblib.dump(self.pca, model_dir / "pca.joblib")
         joblib.dump(self.iso_reg, model_dir / "isotonic.joblib")
 
         # Training embeddings for kNN
@@ -309,6 +322,7 @@ class JournalPredictor:
             "T": self.T,
             "min_papers": self.min_papers,
             "classifier_C": self.classifier_C,
+            "pca_components": self.pca_components,
             "seed": self.seed,
             "train_journals": self.train_journals,
             "train_categories": self.train_categories,
@@ -346,8 +360,9 @@ class JournalPredictor:
         obj.cat_to_idx = config["cat_to_idx"]
         obj.journal_counts = Counter(obj.train_journals)
 
-        # Load classifier and calibration (label_encoder not needed for inference)
+        # Load classifier, PCA, and calibration
         obj.clf = joblib.load(model_dir / "classifier.joblib")
+        obj.pca = joblib.load(model_dir / "pca.joblib") if (model_dir / "pca.joblib").exists() else None
         obj.iso_reg = joblib.load(model_dir / "isotonic.joblib")
         obj.label_encoder = None
 
@@ -392,13 +407,14 @@ class JournalPredictor:
         """
         n = embeddings.shape[0]
 
-        # kNN
+        # kNN (uses full embeddings, not PCA)
         sim = cosine_similarity_chunked(embeddings, self.train_emb)
         knn_preds = predict_knn(sim, self.train_journals, k=self.k)
 
-        # Classifier
+        # Classifier (uses PCA-reduced embeddings)
+        emb_clf = self.pca.transform(embeddings) if self.pca is not None else embeddings
         X = build_feature_matrix(
-            embeddings, categories, self.cat_to_idx, True)
+            emb_clf, categories, self.cat_to_idx, True)
         clf_proba = self.clf.predict_proba(X)
 
         # Ensemble

@@ -205,9 +205,10 @@ def compute_proba_matrix(emb, categories, predictor, chunk_size=2000):
         sim = chunk_norm @ train_norm.T
         knn_preds = predict_knn(sim, predictor.train_journals, k=predictor.k)
 
-        # Classifier
+        # Classifier (PCA-reduced if available)
+        emb_clf = predictor.pca.transform(chunk_emb) if predictor.pca is not None else chunk_emb
         X = build_feature_matrix(
-            chunk_emb, chunk_cats, predictor.cat_to_idx, True)
+            emb_clf, chunk_cats, predictor.cat_to_idx, True)
         clf_proba = predictor.clf.predict_proba(X)
 
         # Ensemble + calibrate

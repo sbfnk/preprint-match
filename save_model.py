@@ -28,6 +28,8 @@ def main():
     parser.add_argument("--alpha", type=float, default=0.1)
     parser.add_argument("--classifier-C", type=float, default=10.0)
     parser.add_argument("--min-papers", type=int, default=10)
+    parser.add_argument("--pca-components", type=int, default=256,
+                        help="PCA dimensions for classifier (default: 256)")
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
@@ -38,6 +40,7 @@ def main():
         dataset_path=args.dataset,
         alpha=args.alpha,
         classifier_C=args.classifier_C,
+        pca_components=args.pca_components,
         min_papers=args.min_papers,
         seed=args.seed)
 
