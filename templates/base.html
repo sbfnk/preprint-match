@@ -14,121 +14,66 @@
     })();
     </script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap');
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
 
-        /* --- Probability bars with animated shimmer --- */
+        /* --- Probability bars --- */
         .prob-bar {
-            background: linear-gradient(90deg, #3376fc 0%, #599bff 50%, #3376fc 100%);
-            background-size: 200% 100%;
-            animation: barShimmer 3s ease-in-out infinite;
+            background: linear-gradient(90deg, #0d9488, #14b8a6);
             transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        @keyframes barShimmer {
-            0%, 100% { background-position: 0% 0; }
-            50% { background-position: 100% 0; }
-        }
 
-        /* --- Card hover with glow --- */
+        /* --- Card hover --- */
         .card-hover {
-            transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+            transition: box-shadow 0.2s ease, border-color 0.2s ease;
         }
         .card-hover:hover {
-            transform: translateY(-2px);
-            border-color: rgba(51, 118, 252, 0.3);
-        }
-        html:not(.dark) .card-hover:hover {
-            box-shadow: 0 8px 30px -8px rgba(51, 118, 252, 0.15), 0 4px 12px -4px rgba(0, 0, 0, 0.08);
+            border-color: rgba(13, 148, 136, 0.3);
+            box-shadow: 0 4px 12px -4px rgba(0, 0, 0, 0.08);
         }
         .dark .card-hover:hover {
-            box-shadow: 0 8px 30px -8px rgba(51, 118, 252, 0.2), 0 4px 12px -4px rgba(0, 0, 0, 0.4);
+            box-shadow: 0 4px 12px -4px rgba(0, 0, 0, 0.3);
         }
 
         /* --- Fade in --- */
         .fade-in {
-            animation: fadeIn 0.4s ease-out both;
+            animation: fadeIn 0.3s ease-out both;
         }
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
+            from { opacity: 0; transform: translateY(6px); }
             to { opacity: 1; transform: translateY(0); }
         }
 
-        /* --- Search bar effects --- */
+        /* --- Search bar --- */
         .search-glow {
-            transition: box-shadow 0.3s ease, border-color 0.3s ease, transform 0.2s ease;
+            transition: box-shadow 0.2s ease, border-color 0.2s ease;
         }
         .search-glow:focus {
-            box-shadow: 0 0 0 4px rgba(51, 118, 252, 0.15), 0 8px 40px -8px rgba(51, 118, 252, 0.2);
-            border-color: #599bff;
-            transform: scale(1.005);
+            box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.12);
+            border-color: #14b8a6;
         }
 
-        /* --- Hero gradient with mesh effect --- */
+        /* --- Clean background --- */
         .gradient-bg {
-            background:
-                radial-gradient(ellipse 80% 60% at 20% 40%, rgba(51, 118, 252, 0.06) 0%, transparent 70%),
-                radial-gradient(ellipse 60% 80% at 80% 60%, rgba(89, 155, 255, 0.05) 0%, transparent 70%),
-                linear-gradient(135deg, #f8fafc 0%, #eef2f7 40%, #f1f5f9 100%);
+            background: #fafafa;
         }
         .dark .gradient-bg {
-            background:
-                radial-gradient(ellipse 80% 60% at 20% 40%, rgba(51, 118, 252, 0.08) 0%, transparent 70%),
-                radial-gradient(ellipse 60% 80% at 80% 60%, rgba(89, 155, 255, 0.06) 0%, transparent 70%),
-                linear-gradient(135deg, #0a0e1a 0%, #111827 40%, #0f172a 100%);
-        }
-
-        /* --- Glass morphism --- */
-        .glass {
-            background: rgba(255, 255, 255, 0.12);
-            backdrop-filter: blur(16px);
-            border: 1px solid rgba(255, 255, 255, 0.18);
-            transition: background 0.2s, border-color 0.2s;
-        }
-        .glass:hover {
-            background: rgba(255, 255, 255, 0.2);
-            border-color: rgba(255, 255, 255, 0.25);
-        }
-        html:not(.dark) .glass {
-            background: rgba(255, 255, 255, 0.7);
-            border: 1px solid rgba(0, 0, 0, 0.06);
-        }
-        html:not(.dark) .glass:hover {
-            background: rgba(255, 255, 255, 0.9);
-            border-color: rgba(51, 118, 252, 0.2);
+            background: #0a0a0a;
         }
 
         /* --- Search result highlight --- */
         mark {
-            background: rgba(51, 118, 252, 0.15);
-            color: #3376fc;
+            background: rgba(13, 148, 136, 0.12);
+            color: #0d9488;
             border-radius: 2px;
             padding: 0 2px;
         }
-        .dark mark { color: #599bff; }
+        .dark mark { color: #2dd4bf; }
 
-        /* --- Journal/paper list row hover glow (dark mode) --- */
+        /* --- Journal/paper list row hover (dark mode) --- */
         .dark .journal-row-hover:hover {
-            box-shadow: inset 2px 0 0 #599bff;
-        }
-
-        /* --- Stat card shimmer on load --- */
-        .stat-card {
-            position: relative;
-            overflow: hidden;
-        }
-        .stat-card::after {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%);
-            transform: translateX(-100%);
-            animation: statShimmer 1.5s ease-out 0.3s forwards;
-        }
-        @keyframes statShimmer {
-            to { transform: translateX(100%); }
-        }
-        .dark .stat-card::after {
-            background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.06) 50%, transparent 100%);
+            box-shadow: inset 2px 0 0 #14b8a6;
         }
 
         /* --- Smooth scroll behaviour --- */
@@ -138,16 +83,11 @@
 <body class="h-full bg-surface-50 text-surface-900 dark:bg-surface-950 dark:text-gray-100 antialiased">
     {% block body %}
     <!-- Navigation -->
-    <nav class="bg-white/80 dark:bg-surface-900/80 backdrop-blur-lg border-b border-surface-200 dark:border-surface-700 sticky top-0 z-50">
+    <nav class="bg-white dark:bg-surface-900 border-b border-surface-200 dark:border-surface-800 sticky top-0 z-50">
         <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-14">
-                <a href="/" class="flex items-center space-x-2.5 group">
-                    <div class="w-7 h-7 bg-brand-600 rounded-lg flex items-center justify-center group-hover:bg-brand-500 transition-colors">
-                        <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
-                        </svg>
-                    </div>
-                    <span class="text-base font-bold text-surface-900 dark:text-white tracking-tight">Preprint Match</span>
+                <a href="/" class="font-serif text-lg font-semibold text-surface-900 dark:text-white hover:text-brand-700 dark:hover:text-brand-400 transition-colors">
+                    Preprint Match
                 </a>
                 <div class="flex items-center gap-4 text-xs text-surface-500 dark:text-surface-400">
                     <span class="hidden sm:inline font-mono">{{ meta.n_papers }} papers &middot; {{ meta.n_journals }} journals</span>
