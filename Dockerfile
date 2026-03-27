@@ -20,4 +20,4 @@ COPY labeled_dataset_slim.json labeled_dataset.json
 
 EXPOSE 8080
 
-CMD ["gunicorn", "webapp:app", "--bind", "0.0.0.0:8080", "--workers", "2", "--threads", "4", "--timeout", "120", "--preload"]
+CMD ["gunicorn", "webapp:app", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "8", "--timeout", "120", "--preload"]
