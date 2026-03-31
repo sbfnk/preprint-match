@@ -48,6 +48,15 @@ def load_data(predictions_dir):
     with open(d / "meta.json") as f:
         DATA["meta"] = json.load(f)
 
+    # Load Sciety peer review data
+    sciety_path = d / "sciety_reviews.json"
+    if sciety_path.exists():
+        with open(sciety_path) as f:
+            DATA["sciety"] = json.load(f)
+        print(f"Loaded {len(DATA['sciety'])} Sciety-reviewed papers")
+    else:
+        DATA["sciety"] = {}
+
     # Load full probability matrix for per-paper and per-journal views
     proba_path = d / "proba_matrix.npz"
     if proba_path.exists():
@@ -342,6 +351,7 @@ def journal_view(name):
         days=days,
         baseline_pct=baseline_pct,
         meta=DATA["meta"],
+        sciety=DATA["sciety"],
     )
 
 
@@ -411,6 +421,7 @@ def paper_view(doi):
         true_journal_in_set=true_journal in DATA["journal_by_name"] if true_journal else False,
         is_training=is_training,
         meta=DATA["meta"],
+        sciety=DATA["sciety"].get(doi),
     )
 
 

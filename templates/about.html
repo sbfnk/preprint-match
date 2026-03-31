@@ -63,10 +63,10 @@
         </p>
 
         <p>
-            Each paper's title and abstract are encoded into a numerical vector using
+            In practice, each paper is converted into a numerical fingerprint that captures what it's about. Papers with similar fingerprints tend to end up in the same journals, so we use those patterns to rank likely destinations. The technical details: fingerprints come from
             <a href="https://huggingface.co/allenai/specter2" class="text-brand-600 dark:text-brand-400 hover:underline">SPECTER2</a>,
-            a scientific document embedding model trained on citation graphs. We fine-tune it with contrastive learning so that papers published in the same journal end up closer together, with training batches grouped by preprint category to force fine-grained distinctions.
-            Predictions combine a nearest-neighbour lookup with a logistic regression classifier, blended 90/10 and tuned on a held-out validation set. Probabilities are calibrated using isotonic regression so that when the model says "15% chance of PLOS ONE", roughly 15% of such predictions turn out correct.
+            a scientific document embedding model trained on citation graphs, which we fine-tune so that papers published in the same journal end up closer together.
+            Predictions combine a nearest-neighbour lookup with a logistic regression classifier, and probabilities are calibrated so that when the model says "15% chance of PLOS ONE", roughly 15% of such predictions turn out correct.
         </p>
 
         <h2 class="text-xl font-semibold text-surface-900 dark:text-white mt-10 mb-3">How well it works</h2>

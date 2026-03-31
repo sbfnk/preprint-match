@@ -14,6 +14,7 @@ COPY predictions/proba_matrix.npz predictions/
 COPY predictions/papers.json predictions/
 COPY predictions/journals.json predictions/
 COPY predictions/meta.json predictions/
+COPY predictions/sciety_reviews.json predictions/
 
 # Training dataset for search and ground-truth display
 COPY labeled_dataset_slim.json labeled_dataset.json
