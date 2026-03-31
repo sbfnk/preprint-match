@@ -99,8 +99,8 @@ jobs:
           echo "Uploading to release..."
           gh release upload "data-latest" --clobber /tmp/predictions-state.tar.gz
 
-      - name: Fetch Sciety peer review data
-        run: python fetch_sciety.py --output predictions/sciety_reviews.json
+      - name: Fetch community evaluation data
+        run: python fetch_reviews.py --output predictions/community_reviews.json
 
       - name: Prepare slim dataset for Docker
         run: cp labeled_dataset.json labeled_dataset_slim.json
