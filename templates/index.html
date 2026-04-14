@@ -14,7 +14,7 @@
             </div>
             <div class="flex items-center gap-4 text-xs text-surface-500 dark:text-surface-300">
                 <span class="hidden sm:inline font-mono">{{ meta.n_papers }} papers &middot; {{ meta.n_journals }} journals</span>
-                <a href="/feed" class="hover:text-surface-900 dark:hover:text-white transition-colors">My Feed</a>
+                <a href="/#feed" class="hover:text-surface-900 dark:hover:text-white transition-colors">My Feed</a>
                 <a href="/about" class="hover:text-surface-900 dark:hover:text-white transition-colors">About</a>
                 <a href="https://github.com/sbfnk/preprint-match" target="_blank" rel="noopener" class="hover:text-surface-900 dark:hover:text-white transition-colors" title="Source code">
                     <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
@@ -40,8 +40,11 @@
             Matching preprints to journals
         </p>
 
-        <!-- Search -->
+        <!-- Unified search / feed builder -->
         <div class="w-full max-w-2xl relative">
+            <!-- Selected journal chips -->
+            <div id="feed-chips" class="flex flex-wrap gap-2 mb-2"></div>
+
             <div class="relative">
                 <svg class="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-surface-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
@@ -49,7 +52,7 @@
                 <input
                     type="text"
                     id="search-box"
-                    placeholder="Find a journal, paper, or author..."
+                    placeholder="Search journals, papers, or add keywords..."
                     autocomplete="off"
                     spellcheck="false"
                     class="w-full pl-14 pr-5 py-5 text-lg rounded-2xl border
@@ -66,21 +69,41 @@
             </div>
         </div>
 
-        <!-- Quick links -->
-        <div class="mt-6 flex flex-wrap gap-2 justify-center">
-            <span class="text-surface-400 dark:text-white/30 text-sm mr-1 self-center">See predictions for:</span>
+        <!-- Feed controls (shown when journals are selected) -->
+        <div id="feed-controls" class="hidden mt-4 flex flex-wrap items-center gap-3">
+            <select id="feed-days" class="px-3 py-1.5 rounded-lg border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 text-surface-900 dark:text-white text-sm">
+                <option value="7">Last week</option>
+                <option value="30" selected>Last month</option>
+                <option value="90">Last 3 months</option>
+                <option value="365">Last year</option>
+            </select>
+            <button onclick="loadFeed()" class="px-5 py-1.5 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 transition-colors">
+                Show feed
+            </button>
+            <button onclick="copyFeedRSS()" class="px-3 py-1.5 rounded-lg border border-surface-300 dark:border-surface-600 text-surface-500 dark:text-surface-400 text-sm hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors" title="Copy RSS link">
+                RSS
+            </button>
+            <span id="feed-rss-msg" class="hidden text-xs text-brand-600 dark:text-brand-400">Copied!</span>
+        </div>
+
+        <!-- Quick links (hidden when journals selected) -->
+        <div id="quick-links" class="mt-6 flex flex-wrap gap-2 justify-center">
+            <span class="text-surface-400 dark:text-white/30 text-sm mr-1 self-center">Try:</span>
             {% for name in ["The Lancet Infectious Diseases", "PLOS Computational Biology", "BMJ", "Nature Medicine"] %}
-            <a href="/journal/{{ name }}?days=30"
-               class="bg-surface-200 dark:bg-surface-700 text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-surface-300 dark:hover:bg-surface-600 px-3 py-1.5 rounded-full text-sm transition-all">
+            <button onclick="addJournal('{{ name }}')"
+               class="bg-surface-200 dark:bg-surface-700 text-surface-600 dark:text-surface-300 hover:text-surface-900 dark:hover:text-white hover:bg-surface-300 dark:hover:bg-surface-600 px-3 py-1.5 rounded-full text-sm transition-all cursor-pointer">
                 {{ name }}
-            </a>
+            </button>
             {% endfor %}
         </div>
     </div>
 </div>
 
+<!-- Feed results -->
+<div id="feed-results" class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 space-y-3"></div>
+
 <!-- Stats -->
-<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 relative z-10">
+<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-12">
     <div class="grid grid-cols-3 gap-4">
         <div class="stat-card bg-white dark:bg-surface-800 rounded-xl p-5 border border-surface-200 dark:border-surface-700 text-center shadow-sm">
             <div class="text-2xl font-bold text-brand-600 dark:text-brand-400">{{ meta.n_papers }}</div>
@@ -98,7 +121,7 @@
 </div>
 
 <!-- Footer -->
-<footer class="border-t border-surface-200 dark:border-surface-700 mt-20">
+<footer class="border-t border-surface-200 dark:border-surface-700 mt-12">
     <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div class="flex flex-col sm:flex-row justify-between items-center gap-3">
             <p class="text-xs text-surface-400">
@@ -117,9 +140,14 @@
 <script>
 const searchBox = document.getElementById('search-box');
 const searchResults = document.getElementById('search-results');
+const feedChips = document.getElementById('feed-chips');
+const feedControls = document.getElementById('feed-controls');
+const quickLinks = document.getElementById('quick-links');
+const feedResultsDiv = document.getElementById('feed-results');
 let debounceTimer;
 let activeIndex = -1;
 let currentItems = [];
+let selectedJournals = JSON.parse(localStorage.getItem('feed_journals') || '[]');
 
 function escapeHtml(s) {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
@@ -134,6 +162,100 @@ function highlightMatch(text, query) {
          + escapeHtml(text.slice(idx + query.length));
 }
 
+// --- Journal chip management ---
+
+function addJournal(name) {
+    if (selectedJournals.indexOf(name) === -1) {
+        selectedJournals.push(name);
+        localStorage.setItem('feed_journals', JSON.stringify(selectedJournals));
+        renderChips();
+    }
+    searchBox.value = '';
+    searchResults.classList.add('hidden');
+    searchBox.focus();
+}
+
+function removeJournal(name) {
+    selectedJournals = selectedJournals.filter(j => j !== name);
+    localStorage.setItem('feed_journals', JSON.stringify(selectedJournals));
+    renderChips();
+    feedResultsDiv.innerHTML = '';
+}
+
+function renderChips() {
+    feedChips.innerHTML = selectedJournals.map(name =>
+        `<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-brand-100 dark:bg-brand-600/20 text-brand-700 dark:text-brand-300">
+            ${escapeHtml(name)}
+            <button onclick="removeJournal('${name.replace(/'/g, "\\'")}')" class="text-brand-500 hover:text-brand-700 dark:hover:text-brand-200">&times;</button>
+        </span>`
+    ).join('');
+    const hasJournals = selectedJournals.length > 0;
+    feedControls.classList.toggle('hidden', !hasJournals);
+    quickLinks.classList.toggle('hidden', hasJournals);
+    searchBox.placeholder = hasJournals
+        ? 'Add more journals or type keywords...'
+        : 'Search journals, papers, or add keywords...';
+}
+
+// --- Feed loading ---
+
+function buildFeedParams() {
+    let params = selectedJournals.map(j => 'j=' + encodeURIComponent(j));
+    params.push('days=' + document.getElementById('feed-days').value);
+    const q = searchBox.value.trim();
+    if (q) params.push('q=' + encodeURIComponent(q));
+    return params.join('&');
+}
+
+function loadFeed() {
+    feedResultsDiv.innerHTML = '<div class="text-center py-8 text-surface-400">Loading...</div>';
+    fetch('/api/feed?' + buildFeedParams())
+        .then(r => r.json())
+        .then(data => {
+            if (data.papers.length === 0) {
+                feedResultsDiv.innerHTML = '<div class="text-center py-8 text-surface-400">No matching preprints found.</div>';
+                return;
+            }
+            const maxProb = data.papers[0].probability;
+            feedResultsDiv.innerHTML = data.papers.map((p, i) => `
+                <div class="bg-white dark:bg-surface-800 rounded-xl border border-surface-200 dark:border-surface-700 p-5 card-hover fade-in" style="animation-delay: ${i * 0.03}s">
+                    <div class="flex items-start gap-3">
+                        <div class="flex-shrink-0 w-8 h-8 rounded-full ${i < 3 ? 'bg-brand-100 dark:bg-brand-600/20 text-brand-600 dark:text-brand-400' : 'bg-surface-100 dark:bg-surface-700 text-surface-500 dark:text-surface-300'} flex items-center justify-center font-bold text-sm">
+                            ${i + 1}
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <a href="/paper/${encodeURIComponent(p.doi)}" class="text-base font-semibold text-surface-900 dark:text-white hover:text-brand-600 dark:hover:text-brand-400 transition-colors leading-snug">${escapeHtml(p.title)}</a>
+                            ${p.authors ? '<p class="text-sm text-surface-400 mt-0.5 truncate">' + escapeHtml(p.authors) + '</p>' : ''}
+                            <div class="flex flex-wrap gap-2 mt-1.5 text-xs text-surface-500 dark:text-surface-300">
+                                <span>${p.date}</span>
+                                ${p.category ? '<span class="px-2 py-0.5 rounded-full bg-surface-100 dark:bg-surface-700 text-surface-600 dark:text-surface-200">' + escapeHtml(p.category) + '</span>' : ''}
+                                ${p.review_url ? '<a href="' + p.review_url + '" target="_blank" class="px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-600/20 text-orange-700 dark:text-orange-300 hover:bg-orange-200 dark:hover:bg-orange-500/30">Community evaluation</a>' : ''}
+                                <span class="px-2 py-0.5 rounded-full bg-brand-50 dark:bg-brand-600/10 text-brand-600 dark:text-brand-300">${escapeHtml(p.matched_journal)}</span>
+                            </div>
+                            <div class="mt-2 flex items-center gap-3 max-w-sm">
+                                <div class="flex-1 bg-surface-200 dark:bg-surface-600 rounded-full h-1.5 overflow-hidden">
+                                    <div class="prob-bar h-full rounded-full" style="width: ${(p.probability / maxProb * 100).toFixed(1)}%"></div>
+                                </div>
+                                <span class="text-xs text-surface-400 w-12 text-right">${(p.probability * 100).toFixed(1)}%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        });
+}
+
+function copyFeedRSS() {
+    const url = window.location.origin + '/feed.rss?' + buildFeedParams();
+    navigator.clipboard.writeText(url).then(() => {
+        const msg = document.getElementById('feed-rss-msg');
+        msg.classList.remove('hidden');
+        setTimeout(() => msg.classList.add('hidden'), 3000);
+    });
+}
+
+// --- Search dropdown ---
+
 function renderResults(data, query) {
     activeIndex = -1;
     currentItems = [];
@@ -147,14 +269,15 @@ function renderResults(data, query) {
     let html = '';
 
     if (data.journals.length > 0) {
-        html += '<div class="px-5 pt-3 pb-1 text-[10px] font-semibold text-surface-400 uppercase tracking-widest">Journals</div>';
-        data.journals.forEach((j, i) => {
+        html += '<div class="px-5 pt-3 pb-1 text-[10px] font-semibold text-surface-400 uppercase tracking-widest">Journals — click to add to feed</div>';
+        data.journals.forEach((j) => {
             const idx = currentItems.length;
-            currentItems.push({ type: 'journal', href: `/journal/${encodeURIComponent(j.name)}?days=30` });
+            const alreadySelected = selectedJournals.indexOf(j.name) !== -1;
+            currentItems.push({ type: 'journal', name: j.name, href: `/journal/${encodeURIComponent(j.name)}?days=30` });
             html += `
-                <a href="/journal/${encodeURIComponent(j.name)}?days=30"
-                   data-idx="${idx}"
-                   class="search-item flex items-center gap-3 px-5 py-3 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors cursor-pointer">
+                <div data-idx="${idx}"
+                   class="search-item flex items-center gap-3 px-5 py-3 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors cursor-pointer ${alreadySelected ? 'opacity-40' : ''}"
+                   onclick="${alreadySelected ? '' : "addJournal('" + j.name.replace(/'/g, "\\'") + "')"}">
                     <div class="w-8 h-8 rounded-lg bg-brand-100 dark:bg-brand-600/20 flex items-center justify-center flex-shrink-0">
                         <svg class="w-4 h-4 text-brand-600 dark:text-brand-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
@@ -162,18 +285,16 @@ function renderResults(data, query) {
                     </div>
                     <div class="min-w-0 flex-1">
                         <div class="font-medium text-surface-900 dark:text-surface-100 truncate">${highlightMatch(j.name, query)}</div>
-                        <div class="text-xs text-surface-500 dark:text-surface-400">Based on ${j.training_papers} published papers</div>
+                        <div class="text-xs text-surface-500 dark:text-surface-400">${j.training_papers} published papers${alreadySelected ? ' · already added' : ''}</div>
                     </div>
-                    <svg class="w-4 h-4 text-surface-300 dark:text-surface-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                    </svg>
-                </a>`;
+                    ${alreadySelected ? '' : '<svg class="w-4 h-4 text-brand-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>'}
+                </div>`;
         });
     }
 
     if (data.papers.length > 0) {
         html += '<div class="px-5 pt-3 pb-1 text-[10px] font-semibold text-surface-400 uppercase tracking-widest border-t border-surface-200 dark:border-surface-600">Papers</div>';
-        data.papers.forEach((p, i) => {
+        data.papers.forEach((p) => {
             const idx = currentItems.length;
             currentItems.push({ type: 'paper', href: `/paper/${encodeURIComponent(p.doi)}` });
             html += `
@@ -199,7 +320,7 @@ function renderResults(data, query) {
 }
 
 function updateActive() {
-    searchResults.querySelectorAll('.search-item').forEach((el, i) => {
+    searchResults.querySelectorAll('.search-item').forEach(el => {
         const idx = parseInt(el.dataset.idx);
         el.classList.toggle('bg-surface-100', idx === activeIndex);
         el.classList.toggle('dark:bg-surface-700', idx === activeIndex);
@@ -221,8 +342,23 @@ searchBox.addEventListener('input', function() {
 });
 
 searchBox.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        if (activeIndex >= 0 && currentItems[activeIndex]) {
+            const item = currentItems[activeIndex];
+            if (item.type === 'journal') addJournal(item.name);
+            else window.location.href = item.href;
+        } else if (selectedJournals.length > 0) {
+            searchResults.classList.add('hidden');
+            loadFeed();
+        } else if (currentItems.length > 0) {
+            const item = currentItems[0];
+            if (item.type === 'journal') addJournal(item.name);
+            else window.location.href = item.href;
+        }
+        return;
+    }
     if (!currentItems.length) return;
-
     if (e.key === 'ArrowDown') {
         e.preventDefault();
         activeIndex = Math.min(activeIndex + 1, currentItems.length - 1);
@@ -231,10 +367,6 @@ searchBox.addEventListener('keydown', function(e) {
         e.preventDefault();
         activeIndex = Math.max(activeIndex - 1, 0);
         updateActive();
-    } else if (e.key === 'Enter') {
-        e.preventDefault();
-        const target = activeIndex >= 0 ? currentItems[activeIndex] : currentItems[0];
-        if (target) window.location.href = target.href;
     } else if (e.key === 'Escape') {
         searchResults.classList.add('hidden');
     }
@@ -244,12 +376,13 @@ searchBox.addEventListener('blur', () => {
     setTimeout(() => searchResults.classList.add('hidden'), 200);
 });
 searchBox.addEventListener('focus', () => {
-    if (searchBox.value.trim().length >= 1) {
+    if (searchBox.value.trim().length >= 2) {
         searchBox.dispatchEvent(new Event('input'));
     }
 });
 
-// Auto-focus search on page load
+// Init
+renderChips();
 searchBox.focus();
 </script>
 {% endblock %}

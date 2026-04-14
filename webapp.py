@@ -507,8 +507,8 @@ def feed_view():
     """Custom feed — ranked preprints across user-selected journals."""
     journal_names = request.args.getlist("j")
     if not journal_names:
-        return render_template("feed_create.html", meta=DATA["meta"],
-                               journals=DATA["journals"])
+        from flask import redirect
+        return redirect("/")
 
     days = request.args.get("days", type=int, default=30)
     top_k = min(request.args.get("top_k", type=int, default=50), 200)
@@ -565,6 +565,30 @@ def feed_rss():
     ))
     resp.headers["Content-Type"] = "application/rss+xml; charset=utf-8"
     return resp
+
+
+@app.route("/api/feed")
+def api_feed():
+    """JSON API for feed results."""
+    journal_names = request.args.getlist("j")
+    if not journal_names:
+        return jsonify({"papers": [], "journals": []})
+
+    days = request.args.get("days", type=int, default=30)
+    top_k = min(request.args.get("top_k", type=int, default=50), 200)
+    query = request.args.get("q", "").strip()
+    keywords = query.split() if query else None
+    papers, resolved = get_feed_rankings(
+        journal_names, days=days, top_k=top_k, keywords=keywords)
+
+    # Add review info
+    for p in papers:
+        r = DATA["reviews"].get(p["doi"])
+        if r:
+            p["review_url"] = list(r["urls"].values())[0]
+            p["review_sources"] = r["sources"]
+
+    return jsonify({"papers": papers, "journals": resolved})
 
 
 # ---------- Analytics routes ----------
