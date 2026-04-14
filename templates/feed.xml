@@ -3,7 +3,7 @@
 <channel>
     <title>Preprint Match: {{ journal_names | join(', ') }}</title>
     <link>{{ site_url }}/feed?{{ journal_params }}{% if days %}&amp;days={{ days }}{% endif %}</link>
-    <description>Preprints matching {{ journal_names | join(', ') }} — updated daily.</description>
+    <description>Preprints matching {{ journal_names | join(', ') }}{% if query %} ({{ query }}){% endif %} — updated daily.</description>
     <atom:link href="{{ feed_url | e }}" rel="self" type="application/rss+xml"/>
     <language>en</language>
     <lastBuildDate>{{ now | default('') }}</lastBuildDate>

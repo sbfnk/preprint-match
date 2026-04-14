@@ -23,6 +23,14 @@
     <div id="selected-journals" class="flex flex-wrap gap-2 mb-8">
     </div>
 
+    <!-- Keywords -->
+    <div class="mb-6">
+        <label class="block text-sm text-surface-500 dark:text-surface-400 mb-2">Keywords (optional)</label>
+        <input type="text" id="keywords" placeholder="e.g. influenza transmission"
+               class="w-full px-4 py-3 rounded-xl border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 text-surface-900 dark:text-white placeholder-surface-400 dark:placeholder-surface-500 focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all">
+        <p class="text-xs text-surface-400 dark:text-surface-500 mt-1">Only show preprints whose title or abstract contains these words</p>
+    </div>
+
     <!-- Date filter -->
     <div class="flex items-center gap-4 mb-6">
         <label class="text-sm text-surface-500 dark:text-surface-400">Show preprints from</label>
@@ -89,6 +97,8 @@ function buildURL(base) {
     var params = selectedJournals.map(function(j) { return 'j=' + encodeURIComponent(j); });
     var days = document.getElementById('days-select').value;
     if (days) params.push('days=' + days);
+    var q = document.getElementById('keywords').value.trim();
+    if (q) params.push('q=' + encodeURIComponent(q));
     return base + '?' + params.join('&');
 }
 

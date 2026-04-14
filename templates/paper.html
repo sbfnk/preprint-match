@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
-{% block title %}{{ (paper.title | fix_title)[:60] }} — Preprint Match{% endblock %}
+{% block title %}{{ (paper.title | fix_title)[:60] }} — Journal Predictions | Preprint Match{% endblock %}
+{% block meta_description %}Predicted journal matches for "{{ (paper.title | fix_title)[:100] }}". See which journals publish similar work.{% endblock %}
 
 {% block content %}
 <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 fade-in">

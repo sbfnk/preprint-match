@@ -17,7 +17,7 @@
             </div>
             <p class="text-sm text-surface-500 dark:text-surface-400">
                 {% if days %}Preprints from the last {{ days }} days{% else %}All preprints{% endif %},
-                ranked by match to your journals.
+                ranked by match to your journals.{% if query %} Filtered by: <span class="font-medium text-surface-700 dark:text-surface-200">{{ query }}</span>{% endif %}
             </p>
         </div>
         <div class="flex gap-2">
@@ -33,7 +33,7 @@
     <!-- Date filters -->
     <div class="flex flex-wrap gap-2 mb-6">
         {% for d, label in [(7, 'Week'), (30, 'Month'), (90, '3 months'), (365, 'Year'), (None, 'All time')] %}
-        <a href="/feed?{{ journal_params }}{% if d %}&days={{ d }}{% endif %}"
+        <a href="/feed?{{ journal_params }}{% if d %}&days={{ d }}{% endif %}{% if query %}&q={{ query | urlencode }}{% endif %}"
            class="px-3 py-1 rounded-lg text-sm transition-colors
                   {% if days == d or (d is none and not days) %}bg-brand-600 text-white{% else %}bg-surface-100 dark:bg-surface-700 text-surface-600 dark:text-surface-200 hover:bg-surface-200 dark:hover:bg-surface-600{% endif %}">
             {{ label }}
