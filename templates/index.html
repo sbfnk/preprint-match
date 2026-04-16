@@ -93,9 +93,21 @@
                     <button onclick="loadFeed()" class="px-5 py-1.5 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 transition-colors">
                         Show
                     </button>
-                    <button onclick="copyFeedRSS()" class="px-3 py-1.5 rounded-lg border border-surface-300 dark:border-surface-600 text-surface-500 dark:text-surface-400 text-sm hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors" title="Copy RSS link">
-                        RSS
-                    </button>
+                    <div class="relative">
+                        <button onclick="toggleSubscribeMenu()" class="px-3 py-1.5 rounded-lg border border-surface-300 dark:border-surface-600 text-surface-500 dark:text-surface-400 text-sm hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors">
+                            Subscribe ▾
+                        </button>
+                        <div id="subscribe-menu" class="hidden absolute right-0 mt-1 w-52 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-xl shadow-lg z-20 overflow-hidden">
+                            <button onclick="copyFeedRSS()" class="w-full text-left px-4 py-2.5 text-sm text-surface-700 dark:text-surface-200 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors">
+                                <div class="font-medium">Copy RSS link</div>
+                                <div class="text-xs text-surface-400">For Feedly, Inoreader, etc.</div>
+                            </button>
+                            <button onclick="subscribeEmail()" class="w-full text-left px-4 py-2.5 text-sm text-surface-700 dark:text-surface-200 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors border-t border-surface-200 dark:border-surface-700">
+                                <div class="font-medium">Get by email</div>
+                                <div class="text-xs text-surface-400">Via Blogtrottr (free)</div>
+                            </button>
+                        </div>
+                    </div>
                     <span id="feed-rss-msg" class="hidden text-xs text-brand-600 dark:text-brand-400">Copied!</span>
                 </div>
 
@@ -436,14 +448,34 @@ function loadFeed() {
         });
 }
 
+function toggleSubscribeMenu() {
+    const menu = document.getElementById('subscribe-menu');
+    menu.classList.toggle('hidden');
+}
+
 function copyFeedRSS() {
     const url = window.location.origin + '/feed.rss?' + buildFeedParams();
     navigator.clipboard.writeText(url).then(() => {
+        document.getElementById('subscribe-menu').classList.add('hidden');
         const msg = document.getElementById('feed-rss-msg');
         msg.classList.remove('hidden');
         setTimeout(() => msg.classList.add('hidden'), 3000);
     });
 }
+
+function subscribeEmail() {
+    const rssUrl = window.location.origin + '/feed.rss?' + buildFeedParams();
+    window.open('https://blogtrottr.com/?subscribe=' + encodeURIComponent(rssUrl), '_blank');
+    document.getElementById('subscribe-menu').classList.add('hidden');
+}
+
+// Close subscribe menu on outside click
+document.addEventListener('click', function(e) {
+    const menu = document.getElementById('subscribe-menu');
+    if (menu && !menu.parentElement.contains(e.target)) {
+        menu.classList.add('hidden');
+    }
+});
 
 // --- Find journals: paper search ---
 
