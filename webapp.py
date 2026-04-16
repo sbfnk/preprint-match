@@ -509,7 +509,13 @@ def get_feed_rankings(journal_names, days=None, top_k=50, keywords=None,
             continue
 
         if kw_groups:
-            text = (p.get("title", "") + " " + p.get("abstract", "")).lower()
+            authors = p.get("authors", "")
+            if isinstance(authors, list):
+                authors = " ".join(
+                    f"{a.get('given_names', '')} {a.get('surname', '')}"
+                    for a in authors if isinstance(a, dict))
+            text = (p.get("title", "") + " " + p.get("abstract", "")
+                    + " " + authors).lower()
             if not any(all(w in text for w in group) for group in kw_groups):
                 continue
 

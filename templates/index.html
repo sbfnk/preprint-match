@@ -54,8 +54,8 @@
 
             <!-- Tab 1: Find papers (feed builder) -->
             <div id="panel-papers">
-                <!-- Selected chips (journals + categories) -->
-                <div id="feed-chips" class="flex flex-wrap gap-2 mb-3 min-h-[2rem]"></div>
+                <!-- Selected chips (journals + categories + keywords) -->
+                <div id="feed-chips" class="flex flex-wrap items-center gap-2 mb-3 min-h-[2rem]"></div>
 
                 <div class="relative">
                     <svg class="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-surface-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -92,6 +92,9 @@
                     </select>
                     <button onclick="loadFeed()" class="px-5 py-1.5 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 transition-colors">
                         Show
+                    </button>
+                    <button onclick="copyFeedLink()" class="px-3 py-1.5 rounded-lg border border-surface-300 dark:border-surface-600 text-surface-500 dark:text-surface-400 text-sm hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors" title="Copy shareable link to this feed">
+                        Copy link
                     </button>
                     <div class="relative">
                         <button onclick="toggleSubscribeMenu()" class="px-3 py-1.5 rounded-lg border border-surface-300 dark:border-surface-600 text-surface-500 dark:text-surface-400 text-sm hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors">
@@ -311,8 +314,11 @@ function renderChips() {
             <button onclick="removeKeyword('${kw.replace(/'/g, "\\'")}')" class="text-amber-500 hover:text-amber-700 dark:hover:text-amber-200">&times;</button>
         </span>`
     ).join('');
-    feedChips.innerHTML = html;
     const hasFilters = selectedJournals.length > 0 || selectedCategories.length > 0 || selectedKeywords.length > 0;
+    if (hasFilters) {
+        html += `<button onclick="clearAll()" class="text-xs text-surface-400 dark:text-surface-500 hover:text-surface-700 dark:hover:text-surface-200 underline underline-offset-2 ml-1 transition-colors">Clear all</button>`;
+    }
+    feedChips.innerHTML = html;
     feedControls.classList.toggle('hidden', !hasFilters);
     quickLinks.classList.toggle('hidden', hasFilters);
     feedSearch.placeholder = 'Add journals, categories, or keywords...';
@@ -446,6 +452,26 @@ function loadFeed() {
                 </div>
             `).join('');
         });
+}
+
+function clearAll() {
+    selectedJournals = [];
+    selectedCategories = [];
+    selectedKeywords = [];
+    localStorage.setItem('feed_journals', '[]');
+    localStorage.setItem('feed_categories', '[]');
+    localStorage.setItem('feed_keywords', '[]');
+    renderChips();
+    feedResultsDiv.innerHTML = '';
+}
+
+function copyFeedLink() {
+    const url = window.location.origin + '/feed?' + buildFeedParams();
+    navigator.clipboard.writeText(url).then(() => {
+        const msg = document.getElementById('feed-rss-msg');
+        msg.classList.remove('hidden');
+        setTimeout(() => msg.classList.add('hidden'), 3000);
+    });
 }
 
 function toggleSubscribeMenu() {
