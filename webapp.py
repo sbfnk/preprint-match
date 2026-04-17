@@ -191,6 +191,11 @@ def get_journal_rankings(journal_name, days=None, top_k=20):
     else:
         mask = np.ones(len(DATA["papers"]), dtype=bool)
 
+    # Restrict to papers with predictions (proba matrix rows)
+    n_scored = DATA["proba"].shape[0]
+    if len(mask) > n_scored:
+        mask[n_scored:] = False
+
     # Get indices of papers passing the filter, sorted by probability
     filtered_indices = np.where(mask)[0]
     if len(filtered_indices) == 0:
@@ -317,6 +322,8 @@ def index():
         letters=DATA["journal_letters"],
         categories=cats,
     )
+
+
 
 
 @app.route("/about")
@@ -516,7 +523,10 @@ def get_feed_rankings(journal_names, days=None, top_k=50, keywords=None,
                     for a in authors if isinstance(a, dict))
             text = (p.get("title", "") + " " + p.get("abstract", "")
                     + " " + authors).lower()
-            if not any(all(w in text for w in group) for group in kw_groups):
+            # Each keyword chip is an AND constraint: every chip must match.
+            # Within a chip, all words must appear (so "influenza transmission"
+            # as one chip requires both words).
+            if not all(all(w in text for w in group) for group in kw_groups):
                 continue
 
         if has_journals:

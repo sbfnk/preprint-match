@@ -48,12 +48,12 @@
         </p>
 
         <p>
-            Journal matching is a stepping stone. The real goal is connecting researchers with work they need to see, when it appears. Preprints don't have to wait for journals to be discovered or reviewed: platforms like
+            Journal matching is only the start. What I'd really like is to surface the preprints you'd care about as soon as they turn up, rather than months later when a journal finally decides. Preprints don't have to wait for a journal, either:
             <a href="https://peercommunityin.org/" class="text-brand-600 dark:text-brand-400 hover:underline">Peer Community In</a>,
             <a href="https://prereview.org/" class="text-brand-600 dark:text-brand-400 hover:underline">PREreview</a>,
             <a href="https://rrid.mitpress.mit.edu/" class="text-brand-600 dark:text-brand-400 hover:underline">Rapid Reviews: Infectious Diseases</a>, and
             <a href="https://elifesciences.org/" class="text-brand-600 dark:text-brand-400 hover:underline">eLife</a>
-            are already evaluating preprints openly. We now show these community evaluations alongside journal predictions, aggregated via
+            already review them openly. Those community evaluations now appear next to our predictions, pulled in via
             <a href="https://sciety.org/" class="text-brand-600 dark:text-brand-400 hover:underline">Sciety</a>
             and <a href="https://pubpeer.com/" class="text-brand-600 dark:text-brand-400 hover:underline">PubPeer</a>.
         </p>
@@ -65,10 +65,10 @@
         </p>
 
         <p>
-            In practice, each paper is converted into a numerical fingerprint that captures what it's about. Papers with similar fingerprints tend to end up in the same journals, so we use those patterns to rank likely destinations. The technical details: fingerprints come from
+            In practice we turn each paper into a numerical fingerprint that captures what it's about. Papers with similar fingerprints tend to end up in the same journals, so we use those patterns to rank where a new preprint might go. The technical details: fingerprints come from
             <a href="https://huggingface.co/allenai/specter2" class="text-brand-600 dark:text-brand-400 hover:underline">SPECTER2</a>,
             a scientific document embedding model trained on citation graphs, which we fine-tune so that papers published in the same journal end up closer together.
-            Predictions combine a nearest-neighbour lookup with a logistic regression classifier, and probabilities are calibrated so that when the model says "15% chance of PLOS ONE", roughly 15% of such predictions turn out correct.
+            Predictions combine a nearest-neighbour lookup with a logistic regression classifier, and we calibrate the probabilities so that when the model says "15% chance of PLOS ONE", about 15% of such predictions turn out to be right.
         </p>
 
         <h2 class="text-xl font-semibold text-surface-900 dark:text-white mt-10 mb-3">How well it works</h2>
@@ -88,7 +88,7 @@
         </p>
 
         <p>
-            The training data consists entirely of preprints that were successfully published. Preprints that were never published, or took a very different path, are absent. The model also has no temporal awareness: publication patterns shift over time, and a paper matching a journal's 2020 output may not match its 2026 editorial direction.
+            The training data is made up entirely of preprints that ended up being published. Preprints that were never published, or that went somewhere very different, aren't in there. The model also doesn't know what year it is. A journal's 2020 output may not look like its 2026 output, but the model treats them the same.
         </p>
 
         <p>
@@ -113,7 +113,7 @@
         </p>
 
         <p>
-            <a href="https://preprints.ai" class="text-brand-600 dark:text-brand-400 hover:underline">preprints.ai</a> provides AI-generated summaries and search across bioRxiv and medRxiv preprints. It aims to help understand a paper, complementary to our attempt to help find where a preprint fits into the journal landscape.
+            <a href="https://preprints.ai" class="text-brand-600 dark:text-brand-400 hover:underline">preprints.ai</a> provides AI-generated summaries and search across bioRxiv and medRxiv preprints. Where it helps you understand what a paper says, Preprint Match helps you guess where it might get published.
         </p>
 
         <h2 class="text-xl font-semibold text-surface-900 dark:text-white mt-10 mb-3">Who</h2>
