@@ -115,6 +115,7 @@
                         <option value="30" selected>Last month</option>
                         <option value="90">Last 3 months</option>
                         <option value="365">Last year</option>
+                        <option value="">All time</option>
                     </select>
                     <button onclick="loadFeed()" class="px-5 py-1.5 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 transition-colors">
                         Show
@@ -430,7 +431,8 @@ function buildFeedParams() {
     let params = selectedJournals.map(j => 'j=' + encodeURIComponent(j));
     selectedCategories.forEach(c => params.push('cat=' + encodeURIComponent(c)));
     selectedKeywords.forEach(k => params.push('kw=' + encodeURIComponent(k)));
-    params.push('days=' + document.getElementById('feed-days').value);
+    const days = document.getElementById('feed-days').value;
+    if (days) params.push('days=' + days);
     return params.join('&');
 }
 
@@ -440,7 +442,31 @@ function loadFeed() {
         .then(r => r.json())
         .then(data => {
             if (data.papers.length === 0) {
-                feedResultsDiv.innerHTML = '<div class="text-center py-8 text-surface-400">No matching preprints found.</div>';
+                const daysSelect = document.getElementById('feed-days');
+                const current = daysSelect.value; // '7', '30', '90', '365', or ''
+                const labels = {'7': 'Last week', '30': 'Last month', '90': 'Last 3 months', '365': 'Last year', '': 'All time'};
+                const order = ['7', '30', '90', '365', ''];
+                const currentIdx = order.indexOf(current);
+                const wider = currentIdx >= 0 ? order.slice(currentIdx + 1) : [];
+
+                if (wider.length === 0) {
+                    feedResultsDiv.innerHTML = '<div class="text-center py-8 text-surface-400">No matching preprints. Try removing a chip.</div>';
+                } else {
+                    const currentLabel = (labels[current] || '').toLowerCase();
+                    const buttons = wider.map(v => `
+                        <button onclick="widenDays('${v}')"
+                                class="px-3 py-1.5 rounded-lg border border-surface-300 dark:border-surface-600 text-surface-600 dark:text-surface-300 text-sm hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors">
+                            ${labels[v]}
+                        </button>`).join('');
+                    feedResultsDiv.innerHTML = `
+                        <div class="text-center py-10">
+                            <p class="text-surface-400 dark:text-surface-500">No matching preprints in the ${currentLabel}.</p>
+                            <div class="mt-4 flex flex-wrap gap-2 justify-center">
+                                <span class="text-sm text-surface-400 dark:text-surface-500 self-center mr-1">Try:</span>
+                                ${buttons}
+                            </div>
+                        </div>`;
+                }
                 return;
             }
             const hasJournalMatch = data.papers.some(p => p.matched_journal);
@@ -473,6 +499,11 @@ function loadFeed() {
             `).join('');
             feedResultsDiv.innerHTML = `<div class="bg-white dark:bg-surface-800 rounded-lg border border-surface-200 dark:border-surface-700 overflow-hidden">${rows}</div>`;
         });
+}
+
+function widenDays(value) {
+    document.getElementById('feed-days').value = value;
+    loadFeed();
 }
 
 function clearAll() {

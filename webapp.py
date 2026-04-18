@@ -559,7 +559,7 @@ def feed_view():
         from flask import redirect
         return redirect("/")
 
-    days = request.args.get("days", type=int, default=30)
+    days = request.args.get("days", type=int, default=None)
     top_k = min(request.args.get("top_k", type=int, default=50), 200)
     keywords = request.args.getlist("kw") or None
     categories = request.args.getlist("cat") or None
@@ -590,7 +590,7 @@ def feed_rss():
     if not journal_names:
         abort(400)
 
-    days = request.args.get("days", type=int, default=30)
+    days = request.args.get("days", type=int, default=None)
     top_k = min(request.args.get("top_k", type=int, default=50), 200)
     keywords = request.args.getlist("kw") or None
     categories = request.args.getlist("cat") or None
@@ -631,7 +631,7 @@ def api_feed():
     if not journal_names and not categories and not keywords:
         return jsonify({"papers": [], "journals": []})
 
-    days = request.args.get("days", type=int, default=30)
+    days = request.args.get("days", type=int, default=None)
     top_k = min(request.args.get("top_k", type=int, default=50), 200)
     papers, resolved = get_feed_rankings(
         journal_names, days=days, top_k=top_k, keywords=keywords,
