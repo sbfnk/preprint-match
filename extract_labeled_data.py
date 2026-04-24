@@ -44,17 +44,17 @@ def fetch_preprints(start_date: str, end_date: str, server: str = "medrxiv",
         print(f"Fetching {server} cursor={cursor}...", file=sys.stderr)
 
         data = None
-        for attempt in range(3):
+        for attempt in range(5):
             try:
                 with urllib.request.urlopen(url, timeout=60) as response:
                     data = json.load(response)
                 break
-            except (urllib.error.URLError, TimeoutError, OSError) as e:
-                print(f"Attempt {attempt + 1}/3 failed: {e}", file=sys.stderr)
-                if attempt < 2:
+            except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError) as e:
+                print(f"Attempt {attempt + 1}/5 failed: {e}", file=sys.stderr)
+                if attempt < 4:
                     time.sleep(2 ** attempt)
         if data is None:
-            print(f"Failed to fetch cursor={cursor} after 3 attempts", file=sys.stderr)
+            print(f"Failed to fetch cursor={cursor} after 5 attempts", file=sys.stderr)
             break
 
         batch = data.get('collection', [])
