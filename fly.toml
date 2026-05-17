@@ -26,5 +26,5 @@ primary_region = 'lhr'
 
 [[vm]]
   memory = '4gb'
-  cpu_kind = 'performance'
-  cpus = 1
+  cpu_kind = 'shared'
+  cpus = 2
