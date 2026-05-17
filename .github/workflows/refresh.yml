@@ -57,7 +57,11 @@ jobs:
           gunzip -c /tmp/labeled_dataset.json.gz > labeled_dataset.json
 
           echo "Downloading prediction state..."
-          gh release download "$TAG" -p "predictions-state.tar.gz" -D /tmp
+          if ! gh release download "$TAG" -p "predictions-state.tar.gz" -D /tmp 2>/dev/null; then
+            echo "Canonical state missing — trying .next (from interrupted prior run)..."
+            gh release download "$TAG" -p "predictions-state.next.tar.gz" -D /tmp
+            mv /tmp/predictions-state.next.tar.gz /tmp/predictions-state.tar.gz
+          fi
           tar xzf /tmp/predictions-state.tar.gz
 
           echo "Files downloaded:"
@@ -91,13 +95,32 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          TAG="data-latest"
+          REPO="${GITHUB_REPOSITORY}"
+
           echo "Packaging updated predictions..."
-          tar czf /tmp/predictions-state.tar.gz \
+          tar czf /tmp/predictions-state.next.tar.gz \
             predictions/papers.json \
             predictions/embeddings.npz
 
-          echo "Uploading to release..."
-          gh release upload "data-latest" --clobber /tmp/predictions-state.tar.gz
+          # Atomic swap: upload under .next name, then delete old canonical,
+          # then rename .next → canonical. If any step is interrupted, the
+          # download step on the next run falls back to .next.
+          echo "Uploading new state as .next..."
+          gh release upload "$TAG" --clobber /tmp/predictions-state.next.tar.gz
+
+          echo "Deleting old canonical asset (if any)..."
+          OLD_ID=$(gh api "/repos/$REPO/releases/tags/$TAG" \
+            --jq '.assets[] | select(.name=="predictions-state.tar.gz") | .id')
+          if [ -n "$OLD_ID" ]; then
+            gh api -X DELETE "/repos/$REPO/releases/assets/$OLD_ID"
+          fi
+
+          echo "Renaming .next → canonical..."
+          NEW_ID=$(gh api "/repos/$REPO/releases/tags/$TAG" \
+            --jq '.assets[] | select(.name=="predictions-state.next.tar.gz") | .id')
+          gh api -X PATCH "/repos/$REPO/releases/assets/$NEW_ID" \
+            -f name=predictions-state.tar.gz
 
       - name: Fetch community evaluation data
         run: python fetch_reviews.py --output predictions/community_reviews.json
