@@ -22,6 +22,8 @@ import time
 import urllib.request
 import urllib.error
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 import sys
@@ -77,6 +79,55 @@ def fetch_preprints(start_date: str, end_date: str, server: str = "medrxiv",
         time.sleep(0.5)  # Be polite to the API
 
     return preprints
+
+
+def _month_chunks(start_date: str, end_date: str, servers, days: int = 30):
+    """Split a date range into (server, start, end) month-sized chunks."""
+    chunks = []
+    start = datetime.strptime(start_date, "%Y-%m-%d")
+    end = datetime.strptime(end_date, "%Y-%m-%d")
+    for server in servers:
+        cursor = start
+        while cursor < end:
+            chunk_end = min(cursor + timedelta(days=days), end)
+            chunks.append((server, cursor.strftime("%Y-%m-%d"),
+                           chunk_end.strftime("%Y-%m-%d")))
+            cursor = chunk_end
+    return chunks
+
+
+def fetch_preprints_parallel(start_date: str, end_date: str, servers,
+                             workers: int = 10) -> list:
+    """Fetch preprints across servers in parallel month-chunks.
+
+    Equivalent results to serial per-server full-range fetches, but ~`workers`x
+    faster — required because the bioRxiv API now paginates ~30 records/page,
+    making a serial 2019-now walk exceed the 6h GitHub Actions limit. Each
+    record is tagged with its `_source` server.
+    """
+    chunks = _month_chunks(start_date, end_date, servers)
+    print(f"Fetching {len(chunks)} month-chunks with {workers} workers...",
+          file=sys.stderr)
+
+    def _fetch(chunk):
+        server, s, e = chunk
+        recs = fetch_preprints(s, e, server)
+        for p in recs:
+            p['_source'] = server
+        return recs
+
+    all_preprints = []
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(_fetch, c): c for c in chunks}
+        for future in as_completed(futures):
+            server, s, e = futures[future]
+            recs = future.result()
+            all_preprints.extend(recs)
+            print(f"  {server} {s}->{e}: {len(recs)} records "
+                  f"({len(all_preprints)} total)", file=sys.stderr)
+
+    return all_preprints
+
 
 def lookup_journal_crossref(doi: str) -> Optional[dict]:
     """Look up journal name and metadata from Crossref API."""
@@ -186,25 +237,28 @@ def main():
     parser.add_argument('--max-preprints', type=int, help='Max preprints to fetch')
     parser.add_argument('--progress-file', default='labeled_progress.jsonl', help='Progress file for resuming')
     parser.add_argument('--doi-year', help='Filter to DOIs from this year (e.g., 2024)')
+    parser.add_argument('--workers', type=int, default=10,
+                        help='Parallel fetch workers (default: 10)')
     args = parser.parse_args()
 
     servers = ['medrxiv', 'biorxiv'] if args.server == 'both' else [args.server]
 
-    all_preprints = []
-    for server in servers:
-        print(f"Fetching {server} preprints from {args.start_date} to {args.end_date}...",
-              file=sys.stderr)
-        preprints = fetch_preprints(args.start_date, args.end_date, server,
-                                   args.max_preprints)
-        print(f"Fetched {len(preprints)} {server} preprints", file=sys.stderr)
-
-        # Tag each record with its source
-        for p in preprints:
-            p['_source'] = server
-
-        all_preprints.extend(preprints)
-
-    preprints = all_preprints
+    if args.max_preprints:
+        # max_preprints only makes sense for a bounded serial fetch
+        all_preprints = []
+        for server in servers:
+            print(f"Fetching {server} preprints from {args.start_date} to "
+                  f"{args.end_date}...", file=sys.stderr)
+            preprints = fetch_preprints(args.start_date, args.end_date, server,
+                                        args.max_preprints)
+            for p in preprints:
+                p['_source'] = server
+            all_preprints.extend(preprints)
+        preprints = all_preprints
+    else:
+        preprints = fetch_preprints_parallel(args.start_date, args.end_date,
+                                             servers, workers=args.workers)
+    print(f"Fetched {len(preprints)} preprints total", file=sys.stderr)
 
     # Filter by DOI year if specified (DOI format: 10.1101/YYYY.MM.DD.XXXXXXXX)
     if args.doi_year:
