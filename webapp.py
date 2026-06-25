@@ -483,7 +483,8 @@ def paper_view(doi):
     predictions = []
     prediction_set_size = 0
     true_journal_rank = None
-    if idx is not None and DATA["proba"] is not None:
+    if (idx is not None and DATA["proba"] is not None
+            and idx < DATA["proba"].shape[0]):
         row = DATA["proba"][idx]
         ranked = np.argsort(row)[::-1]
 
