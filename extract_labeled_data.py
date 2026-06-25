@@ -22,8 +22,6 @@ import time
 import urllib.request
 import urllib.error
 import argparse
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 import sys
@@ -81,52 +79,106 @@ def fetch_preprints(start_date: str, end_date: str, server: str = "medrxiv",
     return preprints
 
 
-def _month_chunks(start_date: str, end_date: str, servers, days: int = 30):
-    """Split a date range into (server, start, end) month-sized chunks."""
-    chunks = []
-    start = datetime.strptime(start_date, "%Y-%m-%d")
-    end = datetime.strptime(end_date, "%Y-%m-%d")
-    for server in servers:
-        cursor = start
-        while cursor < end:
-            chunk_end = min(cursor + timedelta(days=days), end)
-            chunks.append((server, cursor.strftime("%Y-%m-%d"),
-                           chunk_end.strftime("%Y-%m-%d")))
-            cursor = chunk_end
-    return chunks
+def fetch_published(start_date: str, end_date: str, server: str = "medrxiv") -> list:
+    """Fetch PUBLISHED preprints via the /pubs endpoint (by publication date).
 
-
-def fetch_preprints_parallel(start_date: str, end_date: str, servers,
-                             workers: int = 10) -> list:
-    """Fetch preprints across servers in parallel month-chunks.
-
-    Equivalent results to serial per-server full-range fetches, but ~`workers`x
-    faster — required because the bioRxiv API now paginates ~30 records/page,
-    making a serial 2019-now walk exceed the 6h GitHub Actions limit. Each
-    record is tagged with its `_source` server.
+    The /pubs endpoint returns preprint->journal mappings directly (including
+    `published_journal`), paginated 100/page. This is far cheaper than walking
+    the entire /details catalogue: it returns only papers actually published in
+    the window, regardless of when they were posted — exactly what label
+    refresh needs. No Crossref lookup required for the journal name.
     """
-    chunks = _month_chunks(start_date, end_date, servers)
-    print(f"Fetching {len(chunks)} month-chunks with {workers} workers...",
-          file=sys.stderr)
+    if server not in ("medrxiv", "biorxiv"):
+        raise ValueError(f"Unknown server: {server}")
 
-    def _fetch(chunk):
-        server, s, e = chunk
-        recs = fetch_preprints(s, e, server)
-        for p in recs:
+    pubs = []
+    cursor = 0
+    while True:
+        url = f"https://api.biorxiv.org/pubs/{server}/{start_date}/{end_date}/{cursor}"
+        print(f"Fetching {server} pubs cursor={cursor}...", file=sys.stderr)
+
+        data = None
+        for attempt in range(5):
+            try:
+                with urllib.request.urlopen(url, timeout=60) as response:
+                    data = json.load(response)
+                break
+            except (urllib.error.URLError, TimeoutError, OSError,
+                    json.JSONDecodeError) as e:
+                print(f"Attempt {attempt + 1}/5 failed: {e}", file=sys.stderr)
+                if attempt < 4:
+                    time.sleep(2 ** attempt)
+        if data is None:
+            raise RuntimeError(
+                f"Failed to fetch {server} pubs cursor={cursor} after 5 tries")
+
+        batch = data.get('collection', [])
+        if not batch:
+            break
+
+        for p in batch:
             p['_source'] = server
-        return recs
+        pubs.extend(batch)
+        cursor += len(batch)
 
-    all_preprints = []
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = {pool.submit(_fetch, c): c for c in chunks}
-        for future in as_completed(futures):
-            server, s, e = futures[future]
-            recs = future.result()
-            all_preprints.extend(recs)
-            print(f"  {server} {s}->{e}: {len(recs)} records "
-                  f"({len(all_preprints)} total)", file=sys.stderr)
+        total = int(data.get('messages', [{}])[0].get('total', 0))
+        if cursor >= total:
+            break
+        time.sleep(0.5)  # be polite
 
-    return all_preprints
+    return pubs
+
+
+def build_from_pubs(pubs: list, progress_file: Optional[str] = None) -> list:
+    """Build labelled records from /pubs results, deduped against progress.
+
+    Uses `published_journal` directly (no Crossref). publisher / citation_count
+    are left blank for new records — journals already in the dataset keep their
+    publisher mapping from existing records; these fields are auxiliary.
+    """
+    labeled = []
+    seen_dois = set()
+    if progress_file and Path(progress_file).exists():
+        with open(progress_file) as f:
+            for line in f:
+                record = json.loads(line)
+                labeled.append(record)
+                seen_dois.add(record['preprint_doi'])
+        print(f"Loaded {len(labeled)} existing records", file=sys.stderr)
+
+    # Dedup by preprint DOI, keep latest published mapping
+    by_doi = {}
+    for p in pubs:
+        doi = p.get('preprint_doi', '')
+        journal = p.get('published_journal', '')
+        if doi and journal and journal != 'NA' and doi not in seen_dois:
+            by_doi[doi] = p
+
+    print(f"  {len(by_doi)} new published preprints to add", file=sys.stderr)
+
+    import contextlib
+    ctx = open(progress_file, 'a') if progress_file else contextlib.nullcontext()
+    with ctx as progress_f:
+        for p in by_doi.values():
+            record = {
+                'preprint_doi': p['preprint_doi'],
+                'published_doi': p.get('published_doi', ''),
+                'title': p.get('preprint_title', ''),
+                'abstract': p.get('preprint_abstract', ''),
+                'authors': p.get('preprint_authors', ''),
+                'category': p.get('preprint_category', ''),
+                'date': p.get('preprint_date', ''),
+                'journal': p.get('published_journal', ''),
+                'publisher': '',
+                'citation_count': 0,
+                'source': p.get('_source', 'medrxiv'),
+            }
+            labeled.append(record)
+            if progress_f:
+                progress_f.write(json.dumps(record) + '\n')
+                progress_f.flush()
+
+    return labeled
 
 
 def lookup_journal_crossref(doi: str) -> Optional[dict]:
@@ -237,41 +289,29 @@ def main():
     parser.add_argument('--max-preprints', type=int, help='Max preprints to fetch')
     parser.add_argument('--progress-file', default='labeled_progress.jsonl', help='Progress file for resuming')
     parser.add_argument('--doi-year', help='Filter to DOIs from this year (e.g., 2024)')
-    parser.add_argument('--workers', type=int, default=10,
-                        help='Parallel fetch workers (default: 10)')
     args = parser.parse_args()
 
     servers = ['medrxiv', 'biorxiv'] if args.server == 'both' else [args.server]
 
-    if args.max_preprints:
-        # max_preprints only makes sense for a bounded serial fetch
-        all_preprints = []
-        for server in servers:
-            print(f"Fetching {server} preprints from {args.start_date} to "
-                  f"{args.end_date}...", file=sys.stderr)
-            preprints = fetch_preprints(args.start_date, args.end_date, server,
-                                        args.max_preprints)
-            for p in preprints:
-                p['_source'] = server
-            all_preprints.extend(preprints)
-        preprints = all_preprints
-    else:
-        preprints = fetch_preprints_parallel(args.start_date, args.end_date,
-                                             servers, workers=args.workers)
-    print(f"Fetched {len(preprints)} preprints total", file=sys.stderr)
+    # Fetch published preprints via the /pubs endpoint (publication-date keyed,
+    # journal included). Far cheaper and more robust than walking /details.
+    pubs = []
+    for server in servers:
+        print(f"Fetching {server} published preprints "
+              f"{args.start_date} to {args.end_date}...", file=sys.stderr)
+        recs = fetch_published(args.start_date, args.end_date, server)
+        print(f"  {len(recs)} {server} published records", file=sys.stderr)
+        pubs.extend(recs)
+    print(f"Fetched {len(pubs)} published records total", file=sys.stderr)
 
     # Filter by DOI year if specified (DOI format: 10.1101/YYYY.MM.DD.XXXXXXXX)
     if args.doi_year:
         pattern = f"10.1101/{args.doi_year}"
-        preprints = [p for p in preprints if p['doi'].startswith(pattern)]
-        print(f"Filtered to {len(preprints)} preprints from {args.doi_year}", file=sys.stderr)
+        pubs = [p for p in pubs if p.get('preprint_doi', '').startswith(pattern)]
+        print(f"Filtered to {len(pubs)} from {args.doi_year}", file=sys.stderr)
 
-    # Count published
-    published_count = sum(1 for p in preprints if p.get('published') and p['published'] != 'NA')
-    print(f"Of which {published_count} have been published", file=sys.stderr)
-
-    print("Building labeled dataset (this may take a while)...", file=sys.stderr)
-    labeled = build_labeled_dataset(preprints, args.progress_file)
+    print("Building labeled dataset from /pubs...", file=sys.stderr)
+    labeled = build_from_pubs(pubs, args.progress_file)
 
     # Save final output
     with open(args.output, 'w') as f:
