@@ -115,7 +115,7 @@
                         <div class="flex-1 bg-surface-200 dark:bg-surface-600 rounded-full h-2 overflow-hidden cursor-help"
                              title="Match probability: {{ paper.probability | pct }}">
                             <div class="prob-bar h-full rounded-full"
-                                 style="width: {{ (paper.probability / papers[0].probability * 100) | round(1) }}%">
+                                 style="width: {{ ((paper.probability / papers[0].probability * 100) if papers[0].probability else 0) | round(1) }}%">
                             </div>
                         </div>
                         <span class="text-xs w-14 text-right text-surface-400 dark:text-surface-400">

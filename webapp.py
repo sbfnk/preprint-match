@@ -42,8 +42,17 @@ def load_data(predictions_dir):
     for j in DATA["journals"]:
         j["name"] = html.unescape(j["name"])
 
-    with open(d / "papers.json") as f:
+    # Prefer the slim papers file (abstracts stripped, served from
+    # abstracts.db); fall back to the full papers.json for local dev.
+    papers_file = d / "papers_slim.json"
+    if not papers_file.exists():
+        papers_file = d / "papers.json"
+    with open(papers_file) as f:
         DATA["papers"] = json.load(f)
+
+    # Abstracts live in a SQLite FTS5 index on disk, not the Python heap.
+    abstracts_db = d / "abstracts.db"
+    DATA["abstracts_db_path"] = str(abstracts_db) if abstracts_db.exists() else None
 
     with open(d / "meta.json") as f:
         DATA["meta"] = json.load(f)
@@ -59,10 +68,12 @@ def load_data(predictions_dir):
     else:
         DATA["reviews"] = {}
 
-    # Load full probability matrix for per-paper and per-journal views
+    # Load full probability matrix for per-paper and per-journal views.
+    # Kept as float16 to halve its memory footprint (~1GB -> ~0.5GB); values
+    # are only ranked/displayed, so float16 precision is ample.
     proba_path = d / "proba_matrix.npz"
     if proba_path.exists():
-        DATA["proba"] = np.load(proba_path)["proba"].astype(np.float32)
+        DATA["proba"] = np.load(proba_path)["proba"]
     else:
         DATA["proba"] = None
 
@@ -75,7 +86,8 @@ def load_data(predictions_dir):
     # Precompute sorted probability columns for fast percentile lookups
     if DATA["proba"] is not None:
         DATA["proba_sorted"] = np.sort(DATA["proba"], axis=0)
-        DATA["proba_mean"] = DATA["proba"].mean(axis=0)
+        # float32 accumulator avoids precision loss on small column means
+        DATA["proba_mean"] = DATA["proba"].mean(axis=0, dtype=np.float32)
     else:
         DATA["proba_sorted"] = None
         DATA["proba_mean"] = None
@@ -168,6 +180,82 @@ def percentile(prob_value, j_idx):
     return rank / len(sorted_col) * 100
 
 
+# ---------- Abstracts (on-disk SQLite/FTS5) ----------
+
+_abstracts_local = threading.local()
+
+
+def get_abstracts_db():
+    """Per-thread read-only connection to abstracts.db, or None if absent."""
+    path = DATA.get("abstracts_db_path")
+    if not path:
+        return None
+    conn = getattr(_abstracts_local, "conn", None)
+    if conn is None:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True,
+                               check_same_thread=False)
+        _abstracts_local.conn = conn
+    return conn
+
+
+def get_abstracts(dois):
+    """Fetch abstracts for a list of DOIs as a {doi: abstract} dict."""
+    conn = get_abstracts_db()
+    if conn is None or not dois:
+        return {}
+    out = {}
+    # Chunk to stay under SQLite's variable limit.
+    for i in range(0, len(dois), 900):
+        chunk = dois[i:i + 900]
+        placeholders = ",".join("?" * len(chunk))
+        rows = conn.execute(
+            f"SELECT doi, abstract FROM abstracts WHERE doi IN ({placeholders})",
+            chunk).fetchall()
+        for doi, abstract in rows:
+            out[doi] = abstract
+    return out
+
+
+def _fill_abstracts(results):
+    """Populate empty 'abstract' fields in result dicts from abstracts.db."""
+    missing = [r["doi"] for r in results if not r.get("abstract")]
+    if not missing:
+        return
+    fetched = get_abstracts(missing)
+    for r in results:
+        if not r.get("abstract"):
+            r["abstract"] = fetched.get(r["doi"], "")
+
+
+def _fts_query(kw_groups):
+    """Build an FTS5 MATCH string: every word ANDed as a quoted prefix term."""
+    terms = []
+    for group in kw_groups:
+        for word in group:
+            word = word.replace('"', '')
+            if word:
+                terms.append(f'"{word}"*')
+    return " AND ".join(terms)
+
+
+def abstract_match_dois(kw_groups):
+    """Return the set of DOIs matching all keywords via FTS5.
+
+    Returns None when abstracts.db is unavailable, signalling callers to fall
+    back to the in-memory substring filter.
+    """
+    conn = get_abstracts_db()
+    if conn is None:
+        return None
+    query = _fts_query(kw_groups)
+    if not query:
+        return set()
+    rows = conn.execute(
+        "SELECT doi FROM papers_fts WHERE papers_fts MATCH ?", (query,)
+    ).fetchall()
+    return {r[0] for r in rows}
+
+
 def get_journal_rankings(journal_name, days=None, top_k=20):
     """Compute rankings for a journal from the probability matrix.
 
@@ -224,6 +312,7 @@ def get_journal_rankings(journal_name, days=None, top_k=20):
             "lift": prob / baseline if baseline > 0 else None,
         })
 
+    _fill_abstracts(results)
     return results
 
 
@@ -378,7 +467,11 @@ def paper_view(doi):
 
     # Use prediction paper if available, otherwise training paper
     if idx is not None:
-        paper = DATA["papers"][idx]
+        # Shallow copy + inject abstract from disk (slim papers lack it);
+        # avoids mutating the shared in-memory dict.
+        paper = dict(DATA["papers"][idx])
+        if not paper.get("abstract"):
+            paper["abstract"] = get_abstracts([doi]).get(doi, "")
     else:
         paper = training_paper
 
@@ -390,7 +483,8 @@ def paper_view(doi):
     predictions = []
     prediction_set_size = 0
     true_journal_rank = None
-    if idx is not None and DATA["proba"] is not None:
+    if (idx is not None and DATA["proba"] is not None
+            and idx < DATA["proba"].shape[0]):
         row = DATA["proba"][idx]
         ranked = np.argsort(row)[::-1]
 
@@ -498,10 +592,12 @@ def get_feed_rankings(journal_names, days=None, top_k=50, keywords=None,
                  for i in ranked]
         ranked = sorted(ranked, key=lambda i: dates[i], reverse=True)
 
-    # Keyword filter: OR across keywords, AND within multi-word keywords
-    # e.g. ["influenza", "RSV transmission"] matches papers containing
-    # "influenza" OR (both "RSV" AND "transmission")
+    # Keyword filter: every chip is an AND constraint, every word within a chip
+    # must appear, matched against title/abstract/authors.
     kw_groups = [[w.lower() for w in kw.split()] for kw in keywords] if keywords else []
+    # When abstracts.db is available, resolve matching DOIs once via FTS5
+    # (indexed, prefix-token). Falls back to per-paper substring scan otherwise.
+    kw_dois = abstract_match_dois(kw_groups) if kw_groups else None
     # Category filter: paper must match one of the selected categories
     cat_lower = {c.lower() for c in categories} if categories else set()
 
@@ -516,18 +612,20 @@ def get_feed_rankings(journal_names, days=None, top_k=50, keywords=None,
             continue
 
         if kw_groups:
-            authors = p.get("authors", "")
-            if isinstance(authors, list):
-                authors = " ".join(
-                    f"{a.get('given_names', '')} {a.get('surname', '')}"
-                    for a in authors if isinstance(a, dict))
-            text = (p.get("title", "") + " " + p.get("abstract", "")
-                    + " " + authors).lower()
-            # Each keyword chip is an AND constraint: every chip must match.
-            # Within a chip, all words must appear (so "influenza transmission"
-            # as one chip requires both words).
-            if not all(all(w in text for w in group) for group in kw_groups):
-                continue
+            if kw_dois is not None:
+                if p["doi"] not in kw_dois:
+                    continue
+            else:
+                authors = p.get("authors", "")
+                if isinstance(authors, list):
+                    authors = " ".join(
+                        f"{a.get('given_names', '')} {a.get('surname', '')}"
+                        for a in authors if isinstance(a, dict))
+                text = (p.get("title", "") + " " + p.get("abstract", "")
+                        + " " + authors).lower()
+                if not all(all(w in text for w in group)
+                           for group in kw_groups):
+                    continue
 
         if has_journals:
             prob = float(max_probs[idx])
@@ -548,6 +646,8 @@ def get_feed_rankings(journal_names, days=None, top_k=50, keywords=None,
             "source": p.get("source", "medrxiv"),
         })
 
+    # Note: feed (HTML + RSS) does not display abstracts, so we don't fetch
+    # them here — keeps the feed path free of per-request DB lookups.
     return results, resolved
 
 

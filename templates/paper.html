@@ -178,9 +178,9 @@
                     {{ pred.percentile | top_pct }}
                 </span>
                 <div class="flex-1 bg-surface-200 dark:bg-surface-600 rounded-full h-2 overflow-hidden cursor-help"
-                     title="Relative to best match — {{ pred.probability | pct }} probability ({{ (pred.probability / predictions[0].probability * 100) | round(0) }}% of top)">
+                     title="Relative to best match — {{ pred.probability | pct }} probability ({{ ((pred.probability / predictions[0].probability * 100) if predictions[0].probability else 0) | round(0) }}% of top)">
                     <div class="prob-bar h-full rounded-full"
-                         style="width: {{ (pred.probability / predictions[0].probability * 100) | round(1) }}%">
+                         style="width: {{ ((pred.probability / predictions[0].probability * 100) if predictions[0].probability else 0) | round(1) }}%">
                     </div>
                 </div>
                 <span class="text-xs w-14 text-right cursor-help text-surface-400 dark:text-surface-400"

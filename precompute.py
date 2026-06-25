@@ -15,6 +15,7 @@ Usage:
 
 import json
 import argparse
+import sqlite3
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
@@ -23,6 +24,83 @@ from pathlib import Path
 import numpy as np
 
 from extract_labeled_data import fetch_preprints
+
+
+def _authors_to_str(authors):
+    """Normalise an authors field (string or list of dicts) to a string."""
+    if isinstance(authors, list):
+        return " ".join(
+            f"{a.get('given_names', '')} {a.get('surname', '')}"
+            for a in authors if isinstance(a, dict))
+    return authors or ""
+
+
+def build_web_artifacts(output_dir):
+    """Build the slimmed-down artifacts the web app serves.
+
+    Reads the canonical ``papers.json`` + ``proba_matrix.npz`` and writes:
+      * ``proba_matrix.npz`` rewritten as float16 (halves the matrix in RAM)
+      * ``abstracts.db`` — SQLite FTS5 index over title/abstract/authors,
+        keyed by DOI, so abstracts live on disk instead of the Python heap
+      * ``papers_slim.json`` — papers list with the ``abstract`` field dropped
+
+    Safe to run standalone on an existing predictions dir (no GPU/fetch).
+    """
+    output_dir = Path(output_dir)
+
+    # --- float16 probability matrix ---
+    proba_path = output_dir / "proba_matrix.npz"
+    if proba_path.exists():
+        proba = np.load(proba_path)["proba"]
+        if proba.dtype != np.float16:
+            np.savez_compressed(proba_path, proba=proba.astype(np.float16))
+            print(f"  Rewrote {proba_path.name} as float16 "
+                  f"({proba.shape})", file=sys.stderr)
+        else:
+            print(f"  {proba_path.name} already float16", file=sys.stderr)
+
+    # --- abstracts.db + papers_slim.json ---
+    papers_path = output_dir / "papers.json"
+    if not papers_path.exists():
+        print("  No papers.json — skipping abstracts.db/papers_slim.json",
+              file=sys.stderr)
+        return
+    with open(papers_path) as f:
+        papers = json.load(f)
+
+    db_path = output_dir / "abstracts.db"
+    if db_path.exists():
+        db_path.unlink()
+    conn = sqlite3.connect(db_path)
+    # FTS5 table for keyword search (doi UNINDEXED is fine here — we read doi
+    # from MATCH results, never filter by it).
+    conn.execute(
+        "CREATE VIRTUAL TABLE papers_fts USING fts5("
+        "doi UNINDEXED, title, abstract, authors)")
+    # Separate table with doi PRIMARY KEY for fast per-DOI display lookups.
+    # Without this, `WHERE doi IN (...)` against the FTS table is a full scan,
+    # which is unusably slow on a large DB over network/slow disk.
+    conn.execute("CREATE TABLE abstracts (doi TEXT PRIMARY KEY, abstract TEXT)")
+    rows = [(p.get("doi", ""), p.get("title", ""), p.get("abstract", ""),
+             _authors_to_str(p.get("authors", "")))
+            for p in papers]
+    conn.executemany(
+        "INSERT INTO papers_fts (doi, title, abstract, authors) "
+        "VALUES (?, ?, ?, ?)", rows)
+    conn.executemany(
+        "INSERT OR IGNORE INTO abstracts (doi, abstract) VALUES (?, ?)",
+        [(r[0], r[2]) for r in rows])
+    conn.commit()
+    conn.close()
+    print(f"  Wrote {db_path.name} ({len(papers)} papers, FTS5 + doi index)",
+          file=sys.stderr)
+
+    slim_path = output_dir / "papers_slim.json"
+    slim = [{k: v for k, v in p.items() if k != "abstract"} for p in papers]
+    with open(slim_path, "w") as f:
+        json.dump(slim, f)
+    print(f"  Wrote {slim_path.name} ({len(slim)} papers, no abstracts)",
+          file=sys.stderr)
 
 # Publishers whose primary purpose is commercial profit
 _COMMERCIAL_PUBLISHERS = {
@@ -244,10 +322,20 @@ def main():
                         help="Only embed+score existing papers.json")
     parser.add_argument("--fetch-only", action="store_true",
                         help="Only fetch metadata (no GPU needed)")
+    parser.add_argument("--web-artifacts-only", action="store_true",
+                        help="Only (re)build web artifacts (float16 matrix, "
+                             "abstracts.db, papers_slim.json) from existing "
+                             "predictions dir; no fetch/embed/GPU")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.web_artifacts_only:
+        print("Building web artifacts from existing predictions...",
+              file=sys.stderr)
+        build_web_artifacts(output_dir)
+        return
 
     # Load existing papers
     papers_path = output_dir / "papers.json"
@@ -366,6 +454,10 @@ def main():
     }
     with open(output_dir / "meta.json", "w") as f:
         json.dump(meta, f, indent=2)
+
+    # Web artifacts: float16 matrix, abstracts.db, papers_slim.json
+    print("Building web artifacts...", file=sys.stderr)
+    build_web_artifacts(output_dir)
 
     print(f"\nPrecomputed:", file=sys.stderr)
     print(f"  Papers: {len(papers)}", file=sys.stderr)
