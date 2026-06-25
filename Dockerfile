@@ -23,4 +23,8 @@ COPY labeled_dataset_slim.json labeled_dataset.json
 
 EXPOSE 8080
 
-CMD ["gunicorn", "webapp:app", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "8", "--timeout", "120", "--preload"]
+# No --preload: with a single worker, preloading makes the master hold the
+# data and CPython refcount churn copies it into the worker (copy-on-write
+# defeat), roughly doubling RSS. Letting the lone worker load it once keeps
+# memory ~1x.
+CMD ["gunicorn", "webapp:app", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "8", "--timeout", "120"]
