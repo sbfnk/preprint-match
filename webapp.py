@@ -209,7 +209,7 @@ def get_abstracts(dois):
         chunk = dois[i:i + 900]
         placeholders = ",".join("?" * len(chunk))
         rows = conn.execute(
-            f"SELECT doi, abstract FROM papers_fts WHERE doi IN ({placeholders})",
+            f"SELECT doi, abstract FROM abstracts WHERE doi IN ({placeholders})",
             chunk).fetchall()
         for doi, abstract in rows:
             out[doi] = abstract

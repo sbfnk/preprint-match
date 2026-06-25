@@ -25,6 +25,6 @@ primary_region = 'lhr'
   ANALYTICS_DB = "/data/analytics.db"
 
 [[vm]]
-  memory = '2gb'
+  memory = '3gb'
   cpu_kind = 'shared'
   cpus = 2

@@ -72,18 +72,27 @@ def build_web_artifacts(output_dir):
     if db_path.exists():
         db_path.unlink()
     conn = sqlite3.connect(db_path)
+    # FTS5 table for keyword search (doi UNINDEXED is fine here — we read doi
+    # from MATCH results, never filter by it).
     conn.execute(
         "CREATE VIRTUAL TABLE papers_fts USING fts5("
         "doi UNINDEXED, title, abstract, authors)")
+    # Separate table with doi PRIMARY KEY for fast per-DOI display lookups.
+    # Without this, `WHERE doi IN (...)` against the FTS table is a full scan,
+    # which is unusably slow on a large DB over network/slow disk.
+    conn.execute("CREATE TABLE abstracts (doi TEXT PRIMARY KEY, abstract TEXT)")
+    rows = [(p.get("doi", ""), p.get("title", ""), p.get("abstract", ""),
+             _authors_to_str(p.get("authors", "")))
+            for p in papers]
     conn.executemany(
         "INSERT INTO papers_fts (doi, title, abstract, authors) "
-        "VALUES (?, ?, ?, ?)",
-        [(p.get("doi", ""), p.get("title", ""), p.get("abstract", ""),
-          _authors_to_str(p.get("authors", "")))
-         for p in papers])
+        "VALUES (?, ?, ?, ?)", rows)
+    conn.executemany(
+        "INSERT OR IGNORE INTO abstracts (doi, abstract) VALUES (?, ?)",
+        [(r[0], r[2]) for r in rows])
     conn.commit()
     conn.close()
-    print(f"  Wrote {db_path.name} ({len(papers)} papers, FTS5)",
+    print(f"  Wrote {db_path.name} ({len(papers)} papers, FTS5 + doi index)",
           file=sys.stderr)
 
     slim_path = output_dir / "papers_slim.json"
