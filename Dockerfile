@@ -9,9 +9,11 @@ COPY webapp.py .
 COPY templates/ templates/
 COPY static/ static/
 
-# Copy only the essential prediction data
+# Copy only the essential prediction data. papers_slim.json (abstracts
+# stripped) + abstracts.db keep the working set off the Python heap.
 COPY predictions/proba_matrix.npz predictions/
-COPY predictions/papers.json predictions/
+COPY predictions/papers_slim.json predictions/papers_slim.json
+COPY predictions/abstracts.db predictions/
 COPY predictions/journals.json predictions/
 COPY predictions/meta.json predictions/
 COPY predictions/community_reviews.json predictions/
