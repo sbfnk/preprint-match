@@ -26,7 +26,7 @@ echo "=== Step 1: Hard-negative fine-tune SPECTER2 (full text) ==="
 date
 # batch-size 8 / max-chunks 4 fit the A40 48GB (16 OOMs); see memory notes.
 python3 finetune_embeddings.py \
-  --input labeled_dataset.json \
+  --input labeled_dataset_v5.json \
   --output-dir finetuned-specter2-v5/ \
   --hard-negatives \
   --epochs 3 --batch-size 8 --max-chunks 4 --lr 2e-5 \
@@ -41,7 +41,7 @@ date
 python3 save_model.py \
   --model-dir model-v5 \
   --embeddings-dir finetuned-specter2-v5/embeddings \
-  --dataset labeled_dataset.json \
+  --dataset labeled_dataset_v5.json \
   --alpha 0.1 --classifier-C 10.0 --min-papers 10 --pca-components 256
 echo "Saved model-v5/"
 date
@@ -51,6 +51,6 @@ echo "=== Done. Next (manual / separate job): ==="
 echo "  python3 precompute.py --skip-fetch --all \\"
 echo "    --model-dir model-v5 \\"
 echo "    --adapter-path finetuned-specter2-v5/best_adapter \\"
-echo "    --dataset labeled_dataset.json"
+echo "    --dataset labeled_dataset_v5.json"
 echo "  then upload model-v5.tar.gz + adapter-v5.tar.gz to the data-latest"
 echo "  release, point refresh.yml at model-v5, and redeploy."
