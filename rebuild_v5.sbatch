@@ -3,7 +3,7 @@
 #SBATCH --output=rebuild-v5_%j.out
 #SBATCH --error=rebuild-v5_%j.err
 #SBATCH --time=12:00:00
-#SBATCH --mem=32G
+#SBATCH --mem=128G
 #SBATCH --cpus-per-task=4
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:1
