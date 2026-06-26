@@ -78,6 +78,109 @@ def fetch_preprints(start_date: str, end_date: str, server: str = "medrxiv",
 
     return preprints
 
+
+def fetch_published(start_date: str, end_date: str, server: str = "medrxiv") -> list:
+    """Fetch PUBLISHED preprints via the /pubs endpoint (by publication date).
+
+    The /pubs endpoint returns preprint->journal mappings directly (including
+    `published_journal`), paginated 100/page. This is far cheaper than walking
+    the entire /details catalogue: it returns only papers actually published in
+    the window, regardless of when they were posted — exactly what label
+    refresh needs. No Crossref lookup required for the journal name.
+    """
+    if server not in ("medrxiv", "biorxiv"):
+        raise ValueError(f"Unknown server: {server}")
+
+    pubs = []
+    cursor = 0
+    while True:
+        url = f"https://api.biorxiv.org/pubs/{server}/{start_date}/{end_date}/{cursor}"
+        print(f"Fetching {server} pubs cursor={cursor}...", file=sys.stderr)
+
+        data = None
+        for attempt in range(5):
+            try:
+                with urllib.request.urlopen(url, timeout=60) as response:
+                    data = json.load(response)
+                break
+            except (urllib.error.URLError, TimeoutError, OSError,
+                    json.JSONDecodeError) as e:
+                print(f"Attempt {attempt + 1}/5 failed: {e}", file=sys.stderr)
+                if attempt < 4:
+                    time.sleep(2 ** attempt)
+        if data is None:
+            raise RuntimeError(
+                f"Failed to fetch {server} pubs cursor={cursor} after 5 tries")
+
+        batch = data.get('collection', [])
+        if not batch:
+            break
+
+        for p in batch:
+            p['_source'] = server
+        pubs.extend(batch)
+        cursor += len(batch)
+
+        total = int(data.get('messages', [{}])[0].get('total', 0))
+        if cursor >= total:
+            break
+        time.sleep(0.5)  # be polite
+
+    return pubs
+
+
+def build_from_pubs(pubs: list, progress_file: Optional[str] = None) -> list:
+    """Build labelled records from /pubs results, deduped against progress.
+
+    Uses `published_journal` directly (no Crossref). publisher / citation_count
+    are left blank for new records — journals already in the dataset keep their
+    publisher mapping from existing records; these fields are auxiliary.
+    """
+    labeled = []
+    seen_dois = set()
+    if progress_file and Path(progress_file).exists():
+        with open(progress_file) as f:
+            for line in f:
+                record = json.loads(line)
+                labeled.append(record)
+                seen_dois.add(record['preprint_doi'])
+        print(f"Loaded {len(labeled)} existing records", file=sys.stderr)
+
+    # Dedup by preprint DOI, keep latest published mapping
+    by_doi = {}
+    for p in pubs:
+        doi = p.get('preprint_doi', '')
+        journal = p.get('published_journal', '')
+        if doi and journal and journal != 'NA' and doi not in seen_dois:
+            by_doi[doi] = p
+
+    print(f"  {len(by_doi)} new published preprints to add", file=sys.stderr)
+
+    import contextlib
+    ctx = open(progress_file, 'a') if progress_file else contextlib.nullcontext()
+    with ctx as progress_f:
+        for p in by_doi.values():
+            record = {
+                'preprint_doi': p['preprint_doi'],
+                'published_doi': p.get('published_doi', ''),
+                'title': p.get('preprint_title', ''),
+                'abstract': p.get('preprint_abstract', ''),
+                'authors': p.get('preprint_authors', ''),
+                'category': p.get('preprint_category', ''),
+                'date': p.get('preprint_date', ''),
+                'journal': p.get('published_journal', ''),
+                'publisher': '',
+                'citation_count': 0,
+                'source': p.get('_source', 'medrxiv'),
+            }
+            labeled.append(record)
+            if progress_f:
+                progress_f.write(json.dumps(record) + '\n')
+                progress_f.flush()
+
+    return labeled
+
+
 def lookup_journal_crossref(doi: str) -> Optional[dict]:
     """Look up journal name and metadata from Crossref API."""
     # Clean DOI
@@ -190,34 +293,25 @@ def main():
 
     servers = ['medrxiv', 'biorxiv'] if args.server == 'both' else [args.server]
 
-    all_preprints = []
+    # Fetch published preprints via the /pubs endpoint (publication-date keyed,
+    # journal included). Far cheaper and more robust than walking /details.
+    pubs = []
     for server in servers:
-        print(f"Fetching {server} preprints from {args.start_date} to {args.end_date}...",
-              file=sys.stderr)
-        preprints = fetch_preprints(args.start_date, args.end_date, server,
-                                   args.max_preprints)
-        print(f"Fetched {len(preprints)} {server} preprints", file=sys.stderr)
-
-        # Tag each record with its source
-        for p in preprints:
-            p['_source'] = server
-
-        all_preprints.extend(preprints)
-
-    preprints = all_preprints
+        print(f"Fetching {server} published preprints "
+              f"{args.start_date} to {args.end_date}...", file=sys.stderr)
+        recs = fetch_published(args.start_date, args.end_date, server)
+        print(f"  {len(recs)} {server} published records", file=sys.stderr)
+        pubs.extend(recs)
+    print(f"Fetched {len(pubs)} published records total", file=sys.stderr)
 
     # Filter by DOI year if specified (DOI format: 10.1101/YYYY.MM.DD.XXXXXXXX)
     if args.doi_year:
         pattern = f"10.1101/{args.doi_year}"
-        preprints = [p for p in preprints if p['doi'].startswith(pattern)]
-        print(f"Filtered to {len(preprints)} preprints from {args.doi_year}", file=sys.stderr)
+        pubs = [p for p in pubs if p.get('preprint_doi', '').startswith(pattern)]
+        print(f"Filtered to {len(pubs)} from {args.doi_year}", file=sys.stderr)
 
-    # Count published
-    published_count = sum(1 for p in preprints if p.get('published') and p['published'] != 'NA')
-    print(f"Of which {published_count} have been published", file=sys.stderr)
-
-    print("Building labeled dataset (this may take a while)...", file=sys.stderr)
-    labeled = build_labeled_dataset(preprints, args.progress_file)
+    print("Building labeled dataset from /pubs...", file=sys.stderr)
+    labeled = build_from_pubs(pubs, args.progress_file)
 
     # Save final output
     with open(args.output, 'w') as f:
