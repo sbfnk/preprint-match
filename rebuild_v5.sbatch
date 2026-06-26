@@ -2,7 +2,7 @@
 #SBATCH --job-name=rebuild-v5
 #SBATCH --output=rebuild-v5_%j.out
 #SBATCH --error=rebuild-v5_%j.err
-#SBATCH --time=12:00:00
+#SBATCH --time=36:00:00
 #SBATCH --mem=128G
 #SBATCH --cpus-per-task=4
 #SBATCH --partition=gpu
@@ -28,7 +28,7 @@ date
 python3 finetune_embeddings.py \
   --input labeled_dataset_v5.json \
   --output-dir finetuned-specter2-v5/ \
-  --hard-negatives \
+  --hard-negatives --resume \
   --epochs 3 --batch-size 8 --max-chunks 4 --lr 2e-5 \
   --temperature 0.05 --val-size 0.1 --test-size 0.2 \
   --checkpoint-every 500
