@@ -226,8 +226,14 @@ def fetch_all_papers(start_date, end_date, known_dois,
     return papers_list
 
 
-def embed_papers(papers, adapter_path="finetuned-specter2/best_adapter"):
-    """Embed papers using fine-tuned SPECTER2."""
+def embed_papers(papers, adapter_path="finetuned-specter2/best_adapter",
+                 checkpoint_dir=None):
+    """Embed papers using fine-tuned SPECTER2.
+
+    If checkpoint_dir is given, embedding is checkpointed every 1000 records
+    and resumes from any existing checkpoint — essential for large prediction
+    sets (~200k papers, many hours) that may outlive a single job's walltime.
+    """
     from generate_embeddings import (
         load_specter2,
         generate_fulltext_embeddings,
@@ -249,8 +255,20 @@ def embed_papers(papers, adapter_path="finetuned-specter2/best_adapter"):
         "full_text": p.get("full_text", ""),
     } for p in papers]
 
+    start_idx = 0
+    existing = None
+    if checkpoint_dir is not None:
+        from generate_embeddings import _load_checkpoint
+        Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
+        ckpt = _load_checkpoint(Path(checkpoint_dir))
+        if ckpt is not None:
+            existing, start_idx = ckpt
+            print(f"Resuming embedding from record {start_idx}", file=sys.stderr)
+
     return generate_fulltext_embeddings(
-        records, tokenizer, model, device, batch_size=32, stride=256)
+        records, tokenizer, model, device, batch_size=32, stride=256,
+        checkpoint_dir=checkpoint_dir, checkpoint_every=1000,
+        start_idx=start_idx, existing_embeddings=existing)
 
 
 def compute_proba_matrix(emb, categories, predictor, chunk_size=2000):
@@ -401,11 +419,13 @@ def main():
         papers_to_embed = papers[n_existing:]
         print(f"Embedding {len(papers_to_embed)} new papers "
               f"({n_existing} already embedded)...", file=sys.stderr)
-        new_emb = embed_papers(papers_to_embed, args.adapter_path)
+        new_emb = embed_papers(papers_to_embed, args.adapter_path,
+                               checkpoint_dir=output_dir / "emb_checkpoint")
         emb = np.concatenate([emb, new_emb], axis=0)
     elif emb is None:
         print(f"Embedding all {len(papers)} papers...", file=sys.stderr)
-        emb = embed_papers(papers, args.adapter_path)
+        emb = embed_papers(papers, args.adapter_path,
+                           checkpoint_dir=output_dir / "emb_checkpoint")
     else:
         print(f"All {len(papers)} papers already embedded.", file=sys.stderr)
 
