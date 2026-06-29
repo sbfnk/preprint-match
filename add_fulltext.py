@@ -64,7 +64,9 @@ def main():
             already_had += 1
             continue
 
-        doi = record.get("preprint_doi", "")
+        # Training records key the DOI as "preprint_doi"; prediction records
+        # use "doi". Accept either.
+        doi = record.get("preprint_doi") or record.get("doi", "")
         xml_file = find_xml_by_doi(doi, index)
         if xml_file is None:
             continue
