@@ -96,7 +96,10 @@ def build_web_artifacts(output_dir):
           file=sys.stderr)
 
     slim_path = output_dir / "papers_slim.json"
-    slim = [{k: v for k, v in p.items() if k != "abstract"} for p in papers]
+    # Drop fields the webapp never serves from papers_slim: abstract (served
+    # from abstracts.db), and full_text/xml_file (only used at embedding time).
+    _slim_drop = {"abstract", "full_text", "xml_file"}
+    slim = [{k: v for k, v in p.items() if k not in _slim_drop} for p in papers]
     with open(slim_path, "w") as f:
         json.dump(slim, f)
     print(f"  Wrote {slim_path.name} ({len(slim)} papers, no abstracts)",
