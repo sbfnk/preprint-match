@@ -32,6 +32,21 @@ app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 3600  # cache static files 1 hour
 DATA = {}
 
 
+def format_authors(authors):
+    """Normalise an authors field to a display string.
+
+    labeled_dataset.json stores authors either as a semicolon-separated
+    string or as a list of {surname, given_names} records, while the
+    templates and the search index both expect a string.
+    """
+    if isinstance(authors, list):
+        return "; ".join(
+            f"{a.get('given_names', '')} {a.get('surname', '')}".strip()
+            for a in authors if isinstance(a, dict)
+        )
+    return authors or ""
+
+
 def load_data(predictions_dir):
     """Load all precomputed data into memory."""
     d = Path(predictions_dir)
@@ -131,7 +146,7 @@ def load_data(predictions_dir):
                     "abstract": p.get("abstract", ""),
                     "category": p.get("category", ""),
                     "date": p.get("date", ""),
-                    "authors": p.get("authors", ""),
+                    "authors": format_authors(p.get("authors")),
                     "journal": p.get("journal", ""),
                     "source": p.get("source", "medrxiv"),
                 })
@@ -152,7 +167,7 @@ def load_data(predictions_dir):
     search_index = []
     for p in all_papers:
         title = p.get("title", "")
-        authors = p.get("authors", "")
+        authors = format_authors(p.get("authors"))
         search_index.append({
             "doi": p.get("doi", ""),
             "doi_lower": p.get("doi", "").lower(),
@@ -616,13 +631,8 @@ def get_feed_rankings(journal_names, days=None, top_k=50, keywords=None,
                 if p["doi"] not in kw_dois:
                     continue
             else:
-                authors = p.get("authors", "")
-                if isinstance(authors, list):
-                    authors = " ".join(
-                        f"{a.get('given_names', '')} {a.get('surname', '')}"
-                        for a in authors if isinstance(a, dict))
                 text = (p.get("title", "") + " " + p.get("abstract", "")
-                        + " " + authors).lower()
+                        + " " + format_authors(p.get("authors"))).lower()
                 if not all(all(w in text for w in group)
                            for group in kw_groups):
                     continue

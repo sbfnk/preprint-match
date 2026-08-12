@@ -57,5 +57,8 @@ package-lock.json
 # Design explorations
 design-explorations/
 
+# Local analytics store (lives on the Fly volume in production)
+analytics.db
+
 # OS
 .DS_Store
