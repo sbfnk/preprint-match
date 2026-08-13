@@ -307,6 +307,64 @@ This fetches preprints posted in the last 30 days, generates embeddings using th
 
 ---
 
+## SEO and Crawler Discoverability
+
+The web app exposes standard endpoints so search engines and AI assistants can index the full catalogue. All are generated on the fly from the loaded prediction data — no build step.
+
+| Endpoint | Purpose |
+|---|---|
+| `/robots.txt` | Allows crawling; disallows `/stats`, `/api/`, `/hit`; points to the sitemap. |
+| `/sitemap.xml` | Sitemap **index** — references the pages sitemap and the chunked paper sitemaps. |
+| `/sitemap-pages.xml` | Static pages + every journal page (`/journal/<name>`). |
+| `/sitemap-papers-<n>.xml` | Paper pages (`/paper/<doi>`), chunked at `SITEMAP_CHUNK` (40,000) URLs per file to stay under the 50k sitemap limit. |
+
+Every page also carries, via `templates/base.html`:
+
+- a `<link rel="canonical">` — built from `SITE_URL` + the re-encoded request path (spaces/`&` become `%20`/`%26`, matching the sitemap);
+- Open Graph + Twitter Card tags (title/description reuse the page's `title`/`meta_description` blocks);
+- JSON-LD structured data — `WebSite` + `SearchAction` site-wide, `CollectionPage`/`Periodical` on journal pages, `ScholarlyArticle` on paper pages.
+
+`SITE_URL` defaults to `https://preprints.epiforecasts.io` and is overridable via the `SITE_URL` env var.
+
+### Registering with search consoles (one-time, manual)
+
+Crawling is much faster once the sitemap is submitted:
+
+1. **Google Search Console** (https://search.google.com/search-console) — add a **URL-prefix** property `https://preprints.epiforecasts.io`, verify via the **HTML tag** method (paste the `google-site-verification` meta tag into `base.html` and deploy), then **Sitemaps → submit `sitemap.xml`**.
+2. **Bing Webmaster Tools** (https://www.bing.com/webmasters) — **Import from Google Search Console** (one click), or add the site and verify via HTML tag; then submit `sitemap.xml`.
+
+---
+
+## Visitor Analytics
+
+A lightweight first-party counter records one row per page view in a SQLite `hits` table (path, referrer, Fly region, device, browser, timestamp). Bots are filtered by user-agent; no personal data is stored.
+
+- **Where it lives:** on the Fly volume at `/data/analytics.db` (env `ANALYTICS_DB`). This is the source of truth — the `analytics.db` in the repo root is a stale local throwaway and is gitignored.
+- **Write path:** the `/hit` beacon in `webapp.py` (fired by a `navigator.sendBeacon` in `base.html`).
+- **Dashboard:** `/stats` (auth-gated), with a `days` query parameter.
+
+### Pulling the live DB
+
+The container has no `sqlite3`, so copy the file out with SFTP:
+
+```bash
+FLY_ACCESS_TOKEN=$(grep access_token ~/.fly/config.yml | awk '{print $2}') \
+  flyctl ssh sftp get /data/analytics.db /tmp/analytics_live.db --app preprint-match
+```
+
+### Snapshot report
+
+`analytics_snapshot.py` turns the DB into a Markdown report (this-week-vs-last-week, daily/monthly trend, traffic-channel breakdown, top referrers and pages, regions and devices):
+
+```bash
+python3 analytics_snapshot.py --db /tmp/analytics_live.db   # analyse a local copy
+python3 analytics_snapshot.py --pull                        # fetch off Fly first, then report
+```
+
+CI runs this automatically every **Monday 08:00 UTC** via `.github/workflows/analytics-snapshot.yml`, publishing the report to the GitHub Actions job summary plus a 90-day artifact.
+
+---
+
 ## HPC Cluster Details
 
 | Setting | Value |
