@@ -330,8 +330,8 @@ Every page also carries, via `templates/base.html`:
 
 Crawling is much faster once the sitemap is submitted:
 
-1. **Google Search Console** (https://search.google.com/search-console) — add a **URL-prefix** property `https://preprints.epiforecasts.io`, verify via the **HTML tag** method (paste the `google-site-verification` meta tag into `base.html` and deploy), then **Sitemaps → submit `sitemap.xml`**.
-2. **Bing Webmaster Tools** (https://www.bing.com/webmasters) — **Import from Google Search Console** (one click), or add the site and verify via HTML tag; then submit `sitemap.xml`.
+1. **Google Search Console** (https://search.google.com/search-console) — if you control the `epiforecasts.io` DNS zone, add a **Domain** property `epiforecasts.io` and verify with the supplied `google-site-verification=…` **TXT record** (covers all subdomains, most robust). Otherwise add a **URL-prefix** property `https://preprints.epiforecasts.io` and verify via the **HTML tag** method (paste the meta tag into `base.html` and deploy). Then **Sitemaps → submit `https://preprints.epiforecasts.io/sitemap.xml`**.
+2. **Bing Webmaster Tools** (https://www.bing.com/webmasters) — **Import from Google Search Console** (one click), or add the site and verify via DNS/HTML tag; then submit `sitemap.xml`.
 
 ---
 
