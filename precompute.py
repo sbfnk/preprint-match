@@ -59,6 +59,17 @@ def build_web_artifacts(output_dir):
         else:
             print(f"  {proba_path.name} already float16", file=sys.stderr)
 
+    # --- neighbour evidence placeholders ---
+    # The Dockerfile copies these unconditionally, so they must exist even
+    # when the model is too old to produce them. An empty artifact fails the
+    # web app's row-count check and is ignored at load.
+    if not (output_dir / "neighbours.npz").exists():
+        save_neighbours(output_dir,
+                        (np.empty((0, NB_JOURNALS), dtype=np.int16),
+                         np.empty((0, NB_JOURNALS, NB_PER_JOURNAL), dtype=np.int32),
+                         np.empty((0, NB_JOURNALS, NB_PER_JOURNAL), dtype=np.float16)),
+                        [])
+
     # --- abstracts.db + papers_slim.json ---
     papers_path = output_dir / "papers.json"
     if not papers_path.exists():

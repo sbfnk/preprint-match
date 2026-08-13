@@ -71,6 +71,16 @@
             Predictions combine a nearest-neighbour lookup with a logistic regression classifier, and we calibrate the probabilities so that when the model says "15% chance of PLOS ONE", about 15% of such predictions turn out to be right.
         </p>
 
+        <h2 class="text-xl font-semibold text-surface-900 dark:text-white mt-10 mb-3">Why a journal was matched</h2>
+
+        <p>
+            Each journal on a paper page can be expanded to show <strong>similar papers in this journal</strong>: the papers that journal has already published which sit closest to this preprint in the model's fingerprint space, with the similarity shown as a percentage. It is the most direct answer we can give to "why this journal?" — these are the papers the match is built on.
+        </p>
+
+        <p>
+            Two caveats. The examples come from the nearest-neighbour half of the model, while most of the ranking comes from the classifier, so they illustrate the match rather than decompose it. And similarity in fingerprint space is not the same as similarity as you would judge it — two papers can score highly because they share a study design even when the subject matter differs.
+        </p>
+
         <h2 class="text-xl font-semibold text-surface-900 dark:text-white mt-10 mb-3">How well it works</h2>
 
         <p>

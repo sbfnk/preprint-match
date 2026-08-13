@@ -280,6 +280,28 @@ rsync -av hpclogin:~/medrxiv/model-v2/ /Volumes/code/medrxiv/model-v2/
 rsync -av hpclogin:~/medrxiv/predictions/ /Volumes/code/medrxiv/predictions/
 ```
 
+#### "Similar papers" evidence
+
+`precompute.py` also writes `neighbours.npz` + `neighbour_dois.json`, which
+back the "Similar papers in this journal" disclosure on paper pages. For each
+paper's top 5 journals it records the 3 training papers from that journal
+closest to it in the embedding space.
+
+This piggybacks on the paper × training-paper similarity matrix the kNN step
+already computes, so it costs about a minute for 200k papers rather than
+another pass. Rows are stored as indices into a DOI side table rather than
+DOI strings, which keeps the artifact at ~15 MB instead of ~200 MB.
+
+It needs `train_dois` in the model's `config.json`, which is written by
+`JournalPredictor.save()`. Models saved before that field existed still score
+normally — precompute logs a warning and skips the artifact. Pass
+`--no-neighbours` to skip it deliberately.
+
+Note that the evidence is kNN-derived while the ranking is mostly the
+classifier (alpha = 0.1 weights kNN at 10%), so these are illustrative
+examples of what the match is built on, not an attribution of the score. The
+UI says so.
+
 ---
 
 ### Step 7: Launch the web application
@@ -397,6 +419,8 @@ All large data files are gitignored. Here is where everything lives:
 | `finetuned-specter2/` | Fine-tuned adapter weights + regenerated embeddings | ~600 MB |
 | `model/` | Saved model (classifier, metadata, training embeddings) | ~200 MB |
 | `predictions/` | Precomputed probability matrix + paper metadata | ~100 MB |
+| `predictions/neighbours.npz` | "Similar papers" evidence (index arrays) | ~12 MB |
+| `predictions/neighbour_dois.json` | DOI side table the above indexes into | ~4 MB |
 | `xml/` | MECA XML files | ~70k files |
 | `*.jsonl` | Progress files for incremental data fetching | varies |
 
