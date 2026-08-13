@@ -57,7 +57,7 @@ package-lock.json
 # Design explorations
 design-explorations/
 
-# Analytics DB (local/CI copy of the Fly volume)
+# Analytics DB (local/CI copy of the Fly volume, which is the source of truth)
 analytics.db
 analytics_live.db
 snapshot.md
