@@ -15,6 +15,8 @@ Usage:
 """
 
 import argparse
+import io
+import struct
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -162,15 +164,30 @@ def render_icon(size, rounded=True, padding=0.0):
 
 
 def write_ico(path, sizes=(16, 32, 48, 64)):
-    """Write a multi-resolution .ico.
+    """Write a multi-resolution .ico, one independent render per size.
 
-    Each size is rendered independently rather than downscaled from one
-    master, so the 16px entry keeps its own antialiasing.
+    Built by hand rather than through ``Image.save(format="ICO")``: Pillow
+    derives every entry by downscaling a single source image, which throws
+    away the per-size antialiasing that makes a 16px favicon legible. Each
+    frame is stored as PNG, which every browser since IE Vista reads.
     """
-    images = [render_icon(s) for s in sizes]
-    images[0].save(path, format="ICO",
-                   sizes=[(im.width, im.height) for im in images],
-                   append_images=images[1:])
+    frames = []
+    for size in sizes:
+        buf = io.BytesIO()
+        render_icon(size).save(buf, format="PNG", optimize=True)
+        frames.append(buf.getvalue())
+
+    header = struct.pack("<HHH", 0, 1, len(frames))  # reserved, type=icon, count
+    offset = len(header) + 16 * len(frames)
+    directory, payload = b"", b""
+    for size, data in zip(sizes, frames):
+        # 0 in the width/height byte means 256; every size here is smaller.
+        directory += struct.pack("<BBBBHHII", size, size, 0, 0, 1, 32,
+                                 len(data), offset)
+        offset += len(data)
+        payload += data
+
+    path.write_bytes(header + directory + payload)
     return path
 
 
