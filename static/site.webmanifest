@@ -1,0 +1,14 @@
+{
+  "name": "Preprint Match",
+  "short_name": "Preprints",
+  "description": "Which journal will publish this preprint? Ranked journal predictions for every medRxiv and bioRxiv preprint.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fafafa",
+  "theme_color": "#0d9488",
+  "icons": [
+    { "src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

@@ -25,7 +25,8 @@ from urllib.parse import quote
 from xml.sax.saxutils import escape
 
 import numpy as np
-from flask import Flask, render_template, jsonify, request, abort, Response
+from flask import (Flask, render_template, jsonify, request, abort, Response,
+                   send_from_directory)
 
 app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 3600  # cache static files 1 hour
@@ -460,6 +461,13 @@ def about():
 
 # Max URLs per sitemap file (the spec caps at 50,000).
 SITEMAP_CHUNK = 40000
+
+
+@app.route("/favicon.ico")
+def favicon():
+    """Serve the icon from the root path browsers and crawlers probe."""
+    return send_from_directory(app.static_folder, "favicon.ico",
+                               mimetype="image/x-icon")
 
 
 @app.route("/robots.txt")

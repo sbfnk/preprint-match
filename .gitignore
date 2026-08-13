@@ -33,8 +33,7 @@ finetuned-specter2-v2-hardneg/
 
 # Saved model and predictions
 model/
-model-v2/
-model-v3/
+model-v*/
 predictions/
 refresh_state.json
 meca/
