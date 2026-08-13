@@ -207,6 +207,103 @@ Coverage is best for common journals (97% for top-20) and drops for rarer ones (
 
 The 50% prediction set (median 6 journals) is compact enough to display in the webapp. Higher coverage levels require too many journals (44+ out of 501) to be useful as a visual indicator.
 
+## Experiment 5: Scope or Format?
+
+Motivated by issue #2: is a preprint matched to a journal because the science
+fits the journal's scope, or because the manuscript's formatting gives the
+target away? Run with `probe_scope_vs_format.py`.
+
+### Method
+
+Each feature block predicts the journal on its own, on one shared split, so
+the blocks can be read against each other:
+
+| Block | Features | Visible to the model? |
+|---|---|---|
+| scope | TF-IDF over title + abstract | yes |
+| authors | bag of author names | yes |
+| headings | normalised section headings | yes |
+| counts | 16 numbers: lengths, figure/table/reference counts | yes |
+| citations | bag of cited journal names | **no** |
+
+The model embeds title + authors + categories + abstract + body sections
+(`parse_xml.get_full_text_for_embedding`). Reference lists sit in JATS
+`<back>`, not `<body>`, so the citation-formatting giveaway the issue worried
+about is structurally impossible. Headings and document length are the
+channels that *are* exposed.
+
+Every block is reduced to 256 dimensions and fed to multinomial logistic
+regression (C=10), mirroring the deployed model's PCA + classifier half.
+60,000 training and 10,000 test papers from the v5 split, 1,483 journals with
+≥10 training papers, 93% XML coverage.
+
+Two things make the numbers readable. Blocks are reduced **separately** and
+only then concatenated — a single SVD over concatenated blocks lets the 16
+standardised count columns capture the whole component budget and discards
+the 200,000-column scope block. And a **prior-only baseline** (rank journals
+by training frequency, ignore the paper) is included, because with 1,483
+very unevenly sized classes, naming the biggest journals already scores well
+on acc@10.
+
+### Results
+
+| Block | acc@1 | acc@10 | MRR | acc@10 over prior |
+|---|---|---|---|---|
+| prior only | 5.5% | 26.7% | 0.127 | — |
+| authors | 5.7% | 27.5% | 0.130 | +0.8pp |
+| headings | 10.7% | 36.2% | 0.191 | +9.5pp |
+| counts | 11.2% | 36.5% | 0.196 | +9.8pp |
+| format only (headings+counts) | 13.7% | 43.3% | 0.234 | +16.6pp |
+| scope | 14.3% | 53.1% | 0.263 | +26.4pp |
+| citations | 14.5% | 54.1% | 0.268 | +27.4pp |
+| scope + authors | 14.4% | 53.2% | 0.264 | +26.5pp |
+| **scope + format** | **17.5%** | **54.4%** | **0.292** | +27.7pp |
+| all visible | 17.3% | 54.3% | 0.291 | +27.6pp |
+| **everything (+ citations)** | **18.9%** | **59.5%** | **0.319** | +32.8pp |
+
+### Discussion
+
+**Format is redundant for placement but decisive for the final choice.**
+Adding headings and counts on top of scope moves acc@10 by only 1.3pp — once
+the topic is known, the pool of plausible journals is already fixed. But
+acc@1 goes 14.3% → 17.5%, a 22% relative gain, from features containing no
+scientific content at all. Scope cannot separate BMJ Open from J Epidemiol
+Community Health; house style can. Format does not decide the field, it
+decides the journal within the field — which is exactly the decision being
+asked of the model, so the effect lands where it is least welcome.
+
+**House style is near-diagnostic but sparse.** Headings with the highest lift
+over their corpus rate are mandated sections: "Experimental Design and
+Statistical Analyses" for J Neurosci (×65), "Statistics and Reproducibility"
+for Communications Biology (×21), "Design and Implementation" for PLOS
+Comput Biol (×27), "Limitations of the Study" and the STAR Methods headings
+for Cell Press titles (×10–13). Most fire on only 1–6% of a journal's papers,
+which is why the block-level contribution is moderate rather than dominant.
+The table also mixes in method vocabulary that is really scope wearing a
+methods hat — "protein purification", "MRI data acquisition", "bacterial
+strains and growth conditions" — and that part is the model working as
+intended, not leakage.
+
+**Citations are the largest untapped signal.** Cited journals alone match
+scope (54.1% vs 53.1% acc@10) and add +5.2pp acc@10 on top of everything the
+model can currently see — the biggest marginal contribution measured here,
+from data the model has never been given. Extracting `<ref-list>` sources
+needs no GPU and the XML is already local.
+
+**Author names are inconclusive, not null.** The authors block retains 3% of
+its variance under reduction: 78,000 near-orthogonal names cannot be
+represented in 256 dimensions. The +0.1pp on top of scope measures the
+bottleneck, not the signal, and a fair test needs a different reduction.
+
+The same caveat applies in the other direction across the table: reduction
+preserves 100% of the counts block and 48% of headings but only 10% of scope
+and 30% of citations, so the sparse text blocks are systematically
+handicapped. The scope-versus-format gap is wider than these numbers show,
+which makes the format contribution an upper bound rather than a point
+estimate.
+
+---
+
 ## Current Results (v4, combined dataset)
 
 Model v4 uses the combined medRxiv + bioRxiv dataset (165,692 papers, 95% with full text). Evaluated on 29,150 test papers across 1,385 journals with ≥10 training papers.
