@@ -109,6 +109,25 @@ def load_data(predictions_dir):
     else:
         DATA["proba"] = None
 
+    # Neighbour evidence: for each paper's top journals, the training papers
+    # from those journals that sit closest to it in the embedding space.
+    # Rows are indices into neighbour_dois.json rather than DOI strings.
+    nb_path = d / "neighbours.npz"
+    dois_path = d / "neighbour_dois.json"
+    DATA["neighbours"] = None
+    if nb_path.exists() and dois_path.exists():
+        nb = np.load(nb_path)
+        if nb["journal_idx"].shape[0] == len(DATA["papers"]):
+            with open(dois_path) as f:
+                DATA["nb_dois"] = json.load(f)
+            DATA["neighbours"] = (nb["journal_idx"], nb["train_idx"], nb["sim"])
+            print(f"Loaded neighbour evidence for "
+                  f"{nb['journal_idx'].shape[0]} papers")
+        else:
+            print(f"Neighbour evidence out of step with papers.json "
+                  f"({nb['journal_idx'].shape[0]} vs {len(DATA['papers'])}) "
+                  f"— ignoring")
+
     # Build lookup indices
     DATA["paper_by_doi"] = {p["doi"]: i for i, p in enumerate(DATA["papers"])}
     DATA["journal_by_name"] = {
@@ -200,6 +219,42 @@ def load_data(predictions_dir):
     search_index.sort(key=lambda x: x["date"], reverse=True)
     DATA["search_index"] = search_index
     print(f"Search index: {len(search_index)} papers")
+
+    # Titles for neighbour evidence. Reuses the strings already held by the
+    # search index, so this costs dict overhead rather than another copy.
+    DATA["title_by_doi"] = {p["doi"]: p["title"] for p in search_index}
+
+
+def similar_papers(paper_idx, self_doi):
+    """Nearest training papers per journal for one paper, keyed by journal.
+
+    Returns {journal_index: [{doi, title, similarity}, ...]}. Only the top
+    few journals carry evidence, so most journals map to nothing.
+    """
+    if DATA.get("neighbours") is None:
+        return {}
+    journal_idx, train_idx, sim = DATA["neighbours"]
+    if paper_idx >= journal_idx.shape[0]:
+        return {}
+
+    out = {}
+    for slot, j in enumerate(journal_idx[paper_idx]):
+        if j < 0:
+            continue
+        items = []
+        for row, s in zip(train_idx[paper_idx, slot], sim[paper_idx, slot]):
+            if row < 0:
+                continue
+            doi = DATA["nb_dois"][int(row)]
+            title = DATA["title_by_doi"].get(doi)
+            # A paper in the training set would otherwise cite itself.
+            if not title or doi == self_doi:
+                continue
+            items.append({"doi": doi, "title": title,
+                          "similarity": float(s)})
+        if items:
+            out[int(j)] = items
+    return out
 
 
 def percentile(prob_value, j_idx):
@@ -593,6 +648,7 @@ def paper_view(doi):
             and idx < DATA["proba"].shape[0]):
         row = DATA["proba"][idx]
         ranked = np.argsort(row)[::-1]
+        evidence = similar_papers(idx, doi)
 
         # Compute 50% prediction set
         cumsum = 0.0
@@ -621,6 +677,7 @@ def paper_view(doi):
                 "lift": prob / baseline if baseline > 0 else None,
                 "in_prediction_set": rank < prediction_set_size,
                 "is_true": is_true,
+                "similar": evidence.get(int(j_idx)),
             })
 
     return render_template(

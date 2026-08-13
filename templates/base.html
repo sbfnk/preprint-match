@@ -103,6 +103,9 @@
 
         /* --- Smooth scroll behaviour --- */
         html { scroll-behavior: smooth; }
+
+        /* Safari still draws its own disclosure triangle despite list-none */
+        summary::-webkit-details-marker { display: none; }
     </style>
 
     <script type="application/ld+json">

@@ -274,11 +274,60 @@ def embed_papers(papers, adapter_path="finetuned-specter2/best_adapter",
         start_idx=start_idx, existing_embeddings=existing)
 
 
-def compute_proba_matrix(emb, categories, predictor, chunk_size=2000):
+# Neighbour evidence: how many top journals get evidence, and how many
+# example papers each. Both feed fixed-shape arrays, so keep them small.
+NB_JOURNALS = 5
+NB_PER_JOURNAL = 3
+
+
+def _train_rows_by_journal(predictor):
+    """Map eligible-journal column index → training rows published there."""
+    col = {j: i for i, j in enumerate(predictor.restricted_classes)}
+    groups = {}
+    for row, journal in enumerate(predictor.train_journals):
+        k = col.get(journal)
+        if k is not None:
+            groups.setdefault(k, []).append(row)
+    return {k: np.array(v) for k, v in groups.items()}
+
+
+def _chunk_neighbours(sim, proba_chunk, groups):
+    """For each paper, the most similar training papers in its top journals.
+
+    Reuses the similarity matrix the kNN step has already computed, so this
+    costs a partial sort per (paper, journal) rather than another matmul.
+    """
+    n = proba_chunk.shape[0]
+    j_out = np.full((n, NB_JOURNALS), -1, dtype=np.int16)
+    r_out = np.full((n, NB_JOURNALS, NB_PER_JOURNAL), -1, dtype=np.int32)
+    s_out = np.zeros((n, NB_JOURNALS, NB_PER_JOURNAL), dtype=np.float16)
+
+    for i in range(n):
+        top_j = np.argpartition(proba_chunk[i], -NB_JOURNALS)[-NB_JOURNALS:]
+        top_j = top_j[np.argsort(proba_chunk[i][top_j])[::-1]]
+        j_out[i] = top_j
+        for slot, k in enumerate(top_j):
+            rows = groups.get(int(k))
+            if rows is None or not len(rows):
+                continue
+            m = min(NB_PER_JOURNAL, len(rows))
+            best = rows[np.argpartition(sim[i, rows], -m)[-m:]]
+            best = best[np.argsort(sim[i, best])[::-1]]
+            r_out[i, slot, :m] = best
+            s_out[i, slot, :m] = sim[i, best]
+
+    return j_out, r_out, s_out
+
+
+def compute_proba_matrix(emb, categories, predictor, chunk_size=2000,
+                         with_neighbours=False):
     """Compute full probability matrix: n_papers × n_eligible_journals.
 
     Processes in chunks to limit memory usage — the full similarity matrix
     (n_papers × n_train) can be 10s of GB and doesn't fit in CI runners.
+
+    With ``with_neighbours``, also returns the nearest training papers per
+    top journal, for the "similar papers" evidence on paper pages.
     """
     from evaluate_knn import predict_knn
     from train_classifier import build_feature_matrix
@@ -288,6 +337,17 @@ def compute_proba_matrix(emb, categories, predictor, chunk_size=2000):
     n = emb.shape[0]
     n_eligible = int(predictor.eligible_mask.sum())
     proba_all = np.empty((n, n_eligible), dtype=np.float32)
+
+    groups = _train_rows_by_journal(predictor) if with_neighbours else None
+    nb_j = nb_r = nb_s = None
+    if with_neighbours:
+        # journal_idx is int16 to keep the artifact small; that caps the
+        # eligible-journal count well above anything the model produces.
+        assert n_eligible <= np.iinfo(np.int16).max, (
+            f"{n_eligible} eligible journals exceeds the int16 index")
+        nb_j = np.empty((n, NB_JOURNALS), dtype=np.int16)
+        nb_r = np.empty((n, NB_JOURNALS, NB_PER_JOURNAL), dtype=np.int32)
+        nb_s = np.empty((n, NB_JOURNALS, NB_PER_JOURNAL), dtype=np.float16)
 
     # Normalise train embeddings once
     train_norm = predictor.train_emb / np.linalg.norm(
@@ -319,9 +379,32 @@ def compute_proba_matrix(emb, categories, predictor, chunk_size=2000):
         proba_chunk = predictor._apply_isotonic(proba_chunk)
         proba_all[start:end] = proba_chunk
 
+        if with_neighbours:
+            j, r, s = _chunk_neighbours(sim, proba_chunk, groups)
+            nb_j[start:end], nb_r[start:end], nb_s[start:end] = j, r, s
+
         print(f"  Scored {end}/{n} papers", file=sys.stderr)
 
+    if with_neighbours:
+        return proba_all, (nb_j, nb_r, nb_s)
     return proba_all
+
+
+def save_neighbours(output_dir, neighbours, train_dois):
+    """Write the neighbour evidence arrays plus their DOI side table.
+
+    Rows are stored as indices into ``train_dois`` rather than DOI strings:
+    the same training papers recur across many preprints, so indices cut the
+    artifact from hundreds of MB to tens.
+    """
+    nb_j, nb_r, nb_s = neighbours
+    output_dir = Path(output_dir)
+    np.savez_compressed(output_dir / "neighbours.npz",
+                        journal_idx=nb_j, train_idx=nb_r, sim=nb_s)
+    with open(output_dir / "neighbour_dois.json", "w") as f:
+        json.dump(list(train_dois), f)
+    print(f"  neighbours.npz {nb_r.shape} + {len(train_dois)} training DOIs",
+          file=sys.stderr)
 
 
 def main():
@@ -343,6 +426,8 @@ def main():
                         help="Only embed+score existing papers.json")
     parser.add_argument("--fetch-only", action="store_true",
                         help="Only fetch metadata (no GPU needed)")
+    parser.add_argument("--no-neighbours", action="store_true",
+                        help="Skip the 'similar papers' evidence artifact")
     parser.add_argument("--web-artifacts-only", action="store_true",
                         help="Only (re)build web artifacts (float16 matrix, "
                              "abstracts.db, papers_slim.json) from existing "
@@ -446,11 +531,24 @@ def main():
     print(f"Computing {len(papers)} × {len(predictor.restricted_classes)} "
           f"probability matrix...", file=sys.stderr)
     categories = [p.get("category", "") for p in papers]
-    proba = compute_proba_matrix(emb, categories, predictor)
+
+    # Neighbour evidence needs train_dois, which models saved before this
+    # feature lack; those still score normally, just without evidence.
+    want_neighbours = not args.no_neighbours and bool(
+        getattr(predictor, "train_dois", None))
+    if not args.no_neighbours and not want_neighbours:
+        print("  Model has no train_dois — skipping neighbour evidence.",
+              file=sys.stderr)
+
+    result = compute_proba_matrix(emb, categories, predictor,
+                                  with_neighbours=want_neighbours)
+    proba, neighbours = result if want_neighbours else (result, None)
 
     # ---------- Save ----------
     # Full probability matrix
     np.savez_compressed(output_dir / "proba_matrix.npz", proba=proba)
+    if neighbours is not None:
+        save_neighbours(output_dir, neighbours, predictor.train_dois)
 
     # Journal index (with publisher info from labelled data)
     journal_publisher = _extract_publishers(args.dataset)

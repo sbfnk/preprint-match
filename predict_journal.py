@@ -87,6 +87,8 @@ class JournalPredictor:
         self.pool_idx = np.concatenate([val_idx, test_idx])
 
         self.train_journals = [self.journals[i] for i in train_idx]
+        # Row-aligned with train_emb, so kNN neighbours can be named.
+        self.train_dois = [self.dois[i] for i in train_idx]
         self.val_journals = [self.journals[i] for i in val_idx]
         self.test_journals = [self.journals[i] for i in test_idx]
         self.pool_dois = [self.dois[i] for i in self.pool_idx]
@@ -325,6 +327,7 @@ class JournalPredictor:
             "pca_components": self.pca_components,
             "seed": self.seed,
             "train_journals": self.train_journals,
+            "train_dois": self.train_dois,
             "train_categories": self.train_categories,
             "eligible_journals": self.eligible_journals,
             "all_classes": self.all_classes.tolist(),
@@ -354,6 +357,8 @@ class JournalPredictor:
         obj.min_papers = config["min_papers"]
         obj.seed = config["seed"]
         obj.train_journals = config["train_journals"]
+        # Absent in models saved before neighbour evidence was added.
+        obj.train_dois = config.get("train_dois")
         obj.eligible_journals = config["eligible_journals"]
         obj.all_classes = np.array(config["all_classes"])
         obj.unique_cats = config["unique_cats"]

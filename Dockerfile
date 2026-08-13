@@ -16,6 +16,9 @@ COPY predictions/papers_slim.json predictions/papers_slim.json
 COPY predictions/abstracts.db predictions/
 COPY predictions/journals.json predictions/
 COPY predictions/meta.json predictions/
+# "Similar papers" evidence: compact index arrays + their DOI side table.
+COPY predictions/neighbours.npz predictions/
+COPY predictions/neighbour_dois.json predictions/
 COPY predictions/community_reviews.json predictions/
 
 # Training dataset for search and ground-truth display
