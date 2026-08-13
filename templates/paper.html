@@ -221,7 +221,7 @@
             <ul class="mt-2 ml-12 space-y-1.5 border-l-2 border-surface-200 dark:border-surface-600 pl-3">
                 {% for s in pred.similar %}
                 <li class="text-xs leading-snug">
-                    <a href="/paper/{{ s.doi }}" class="text-surface-600 dark:text-surface-300 hover:text-brand-600 dark:hover:text-brand-400">{{ s.title | fix_title }}</a>
+                    <a href="{{ s.doi | doi_url(s.source) }}" target="_blank" rel="noopener" class="text-surface-600 dark:text-surface-300 hover:text-brand-600 dark:hover:text-brand-400">{{ s.title | fix_title }}</a>
                     <span class="text-surface-400 dark:text-surface-500 font-mono ml-1" title="Cosine similarity in the model's embedding space">{{ (s.similarity * 100) | round(0) | int }}%</span>
                 </li>
                 {% endfor %}

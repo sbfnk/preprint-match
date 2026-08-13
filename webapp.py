@@ -220,16 +220,17 @@ def load_data(predictions_dir):
     DATA["search_index"] = search_index
     print(f"Search index: {len(search_index)} papers")
 
-    # Titles for neighbour evidence. Reuses the strings already held by the
-    # search index, so this costs dict overhead rather than another copy.
-    DATA["title_by_doi"] = {p["doi"]: p["title"] for p in search_index}
+    # Title and source lookup for neighbour evidence. Points at the search
+    # index entries rather than copying them, so this costs dict overhead
+    # rather than another copy of every title.
+    DATA["index_by_doi"] = {p["doi"]: p for p in search_index}
 
 
 def similar_papers(paper_idx, self_doi):
     """Nearest training papers per journal for one paper, keyed by journal.
 
-    Returns {journal_index: [{doi, title, similarity}, ...]}. Only the top
-    few journals carry evidence, so most journals map to nothing.
+    Returns {journal_index: [{doi, title, source, similarity}, ...]}. Only
+    the top few journals carry evidence, so most journals map to nothing.
     """
     if DATA.get("neighbours") is None:
         return {}
@@ -246,11 +247,12 @@ def similar_papers(paper_idx, self_doi):
             if row < 0:
                 continue
             doi = DATA["nb_dois"][int(row)]
-            title = DATA["title_by_doi"].get(doi)
+            entry = DATA["index_by_doi"].get(doi)
             # A paper in the training set would otherwise cite itself.
-            if not title or doi == self_doi:
+            if entry is None or doi == self_doi:
                 continue
-            items.append({"doi": doi, "title": title,
+            items.append({"doi": doi, "title": entry["title"],
+                          "source": entry.get("source") or "medrxiv",
                           "similarity": float(s)})
         if items:
             out[int(j)] = items
