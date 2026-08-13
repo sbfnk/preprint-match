@@ -5,6 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Preprint Match{% endblock %}</title>
     <meta name="description" content="{% block meta_description %}Match medRxiv and bioRxiv preprints to journals. Browse predictions for {{ meta.n_journals }} journals, updated daily.{% endblock %}">
+    <link rel="canonical" href="{{ canonical_url }}">
+
+    <!-- Open Graph / social + AI link previews -->
+    <meta property="og:site_name" content="Preprint Match">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="{{ self.title() }}">
+    <meta property="og:description" content="{{ self.meta_description() }}">
+    <meta property="og:url" content="{{ canonical_url }}">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="{{ self.title() }}">
+    <meta name="twitter:description" content="{{ self.meta_description() }}">
+
     <link rel="stylesheet" href="/static/tailwind.css">
     <script>
     // Apply dark mode before render to prevent flash
@@ -80,6 +92,25 @@
         /* --- Smooth scroll behaviour --- */
         html { scroll-behavior: smooth; }
     </style>
+
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "Preprint Match",
+        "url": "{{ site_url }}/",
+        "description": "Match medRxiv and bioRxiv preprints to the journals most likely to publish them.",
+        "potentialAction": {
+            "@type": "SearchAction",
+            "target": {
+                "@type": "EntryPoint",
+                "urlTemplate": "{{ site_url }}/?q={search_term_string}"
+            },
+            "query-input": "required name=search_term_string"
+        }
+    }
+    </script>
+    {% block head %}{% endblock %}
 </head>
 <body class="h-full bg-surface-50 text-surface-900 dark:bg-surface-950 dark:text-gray-100 antialiased">
     {% block body %}

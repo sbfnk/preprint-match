@@ -1,0 +1,41 @@
+name: Weekly analytics snapshot
+
+on:
+  schedule:
+    # Mondays at 08:00 UTC
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+
+env:
+  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Pull live analytics DB
+        run: flyctl ssh sftp get /data/analytics.db analytics_live.db --app preprint-match
+
+      - name: Generate snapshot
+        run: python3 analytics_snapshot.py --db analytics_live.db -o snapshot.md
+
+      - name: Publish to job summary
+        run: cat snapshot.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload snapshot artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: analytics-snapshot
+          path: snapshot.md
+          retention-days: 90

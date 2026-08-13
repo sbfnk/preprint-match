@@ -21,12 +21,28 @@ import threading
 from datetime import datetime, timedelta
 from functools import wraps
 from pathlib import Path
+from urllib.parse import quote
+from xml.sax.saxutils import escape
 
 import numpy as np
-from flask import Flask, render_template, jsonify, request, abort
+from flask import Flask, render_template, jsonify, request, abort, Response
 
 app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 3600  # cache static files 1 hour
+
+# Canonical origin, used for canonical/OG URLs, robots.txt and sitemaps.
+SITE_URL = os.environ.get("SITE_URL", "https://preprints.epiforecasts.io")
+
+
+@app.context_processor
+def inject_site_url():
+    # Re-encode the decoded request path (spaces, &, …) so canonical/OG URLs
+    # match the encoded links emitted in the sitemap.
+    from flask import has_request_context
+    canonical = SITE_URL
+    if has_request_context():
+        canonical = SITE_URL + quote(request.path, safe="/")
+    return {"site_url": SITE_URL, "canonical_url": canonical}
 
 # Global data — loaded once at startup
 DATA = {}
@@ -423,6 +439,73 @@ def about():
         j["training_papers"] for j in DATA["journals"]
     )
     return render_template("about.html", meta=meta)
+
+
+# ---------- SEO / crawler endpoints ----------
+
+# Max URLs per sitemap file (the spec caps at 50,000).
+SITEMAP_CHUNK = 40000
+
+
+@app.route("/robots.txt")
+def robots_txt():
+    """Allow crawling of content, including AI crawlers; hide app internals."""
+    lines = [
+        "# preprints.epiforecasts.io",
+        "User-agent: *",
+        "Allow: /",
+        "Disallow: /stats",
+        "Disallow: /api/",
+        "Disallow: /hit",
+        "",
+        f"Sitemap: {SITE_URL}/sitemap.xml",
+        "",
+    ]
+    return Response("\n".join(lines), mimetype="text/plain")
+
+
+def _urlset(urls):
+    parts = ['<?xml version="1.0" encoding="UTF-8"?>',
+             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
+    parts += [f"<url><loc>{escape(u)}</loc></url>" for u in urls]
+    parts.append("</urlset>")
+    return Response("\n".join(parts), mimetype="application/xml")
+
+
+@app.route("/sitemap.xml")
+def sitemap_index():
+    """Sitemap index: static+journal pages, plus chunked paper pages."""
+    n_papers = len(DATA.get("papers", []))
+    n_chunks = max(1, (n_papers + SITEMAP_CHUNK - 1) // SITEMAP_CHUNK)
+    parts = ['<?xml version="1.0" encoding="UTF-8"?>',
+             '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+             f"<sitemap><loc>{SITE_URL}/sitemap-pages.xml</loc></sitemap>"]
+    parts += [f"<sitemap><loc>{SITE_URL}/sitemap-papers-{i}.xml</loc></sitemap>"
+              for i in range(n_chunks)]
+    parts.append("</sitemapindex>")
+    return Response("\n".join(parts), mimetype="application/xml")
+
+
+@app.route("/sitemap-pages.xml")
+def sitemap_pages():
+    """Static pages and every journal page."""
+    urls = [f"{SITE_URL}/", f"{SITE_URL}/about", f"{SITE_URL}/feed"]
+    urls += [f"{SITE_URL}/journal/" + quote(j["name"], safe="")
+             for j in DATA["journals"]]
+    return _urlset(urls)
+
+
+@app.route("/sitemap-papers-<int:chunk>.xml")
+def sitemap_papers(chunk):
+    """One chunk of paper pages."""
+    papers = DATA.get("papers", [])
+    start = chunk * SITEMAP_CHUNK
+    if chunk != 0 and start >= len(papers):
+        abort(404)
+    subset = papers[start:start + SITEMAP_CHUNK]
+    urls = [f"{SITE_URL}/paper/" + quote(p["doi"], safe="/")
+            for p in subset if p.get("doi")]
+    return _urlset(urls)
 
 
 @app.route("/journal/<path:name>")

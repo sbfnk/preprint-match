@@ -3,6 +3,26 @@
 {% block title %}{{ (paper.title | fix_title)[:60] }} — Journal Predictions | Preprint Match{% endblock %}
 {% block meta_description %}Predicted journal matches for "{{ (paper.title | fix_title)[:100] }}". See which journals publish similar work.{% endblock %}
 
+{% block head %}
+{% if paper.doi %}
+<script type="application/ld+json">
+{
+    "@context": "https://schema.org",
+    "@type": "ScholarlyArticle",
+    "headline": {{ (paper.title | fix_title) | tojson }},
+    {% if paper.abstract %}"abstract": {{ paper.abstract[:500] | tojson }},{% endif %}
+    {% if paper.authors %}"author": {{ paper.authors | tojson }},{% endif %}
+    {% if paper.date %}"datePublished": {{ paper.date | tojson }},{% endif %}
+    "identifier": {{ ("https://doi.org/" ~ paper.doi) | tojson }},
+    "sameAs": {{ ("https://doi.org/" ~ paper.doi) | tojson }},
+    "url": {{ canonical_url | tojson }},
+    "isAccessibleForFree": true,
+    "publisher": {"@type": "Organization", "name": {{ (paper.source or "medRxiv / bioRxiv") | tojson }}}
+}
+</script>
+{% endif %}
+{% endblock %}
+
 {% block content %}
 <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 fade-in">
     <!-- Back link -->
