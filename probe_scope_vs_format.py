@@ -21,12 +21,14 @@ before they post the preprint. That is house style leaking into the input,
 not scope. The script also reports which headings are most predictive of
 which journal, so the effect can be inspected directly.
 
-Only the first three are visible to the model: the text sent to SPECTER2 is
-title + authors + categories + abstract + body sections (see
-``parse_xml.get_full_text_for_embedding``), and the reference list lives in
-JATS ``<back>``, not ``<body>``. The citations block is therefore an upper
-bound on a giveaway the model cannot currently see — worth measuring, since
-it is the specific one the issue worries about.
+Only headings, and the lengths derived from the body, are visible to the
+model. The text sent to SPECTER2 is ``title [SEP] abstract [SEP] body_text``,
+where ``body_text`` renders the JATS ``<body>`` sections as ``## Heading``
+plus paragraphs. Author names never reach it — ``get_full_text_for_embedding``
+would add them but is not used by the pipeline — and the reference list lives
+in ``<back>``, not ``<body>``. The authors and citations blocks are therefore
+controls rather than leaks: citations measures a giveaway the model cannot
+currently see, which is the specific one the issue worries about.
 
 Each block goes through the same pipeline the deployed model uses for its
 classifier half: reduce to 256 dimensions, then multinomial logistic

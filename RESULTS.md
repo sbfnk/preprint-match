@@ -221,16 +221,27 @@ the blocks can be read against each other:
 | Block | Features | Visible to the model? |
 |---|---|---|
 | scope | TF-IDF over title + abstract | yes |
-| authors | bag of author names | yes |
+| authors | bag of author names | no — control |
 | headings | normalised section headings | yes |
-| counts | 16 numbers: lengths, figure/table/reference counts | yes |
-| citations | bag of cited journal names | **no** |
+| counts | 16 numbers: lengths, figure/table/reference counts | partly |
+| citations | bag of cited journal names | no |
 
-The model embeds title + authors + categories + abstract + body sections
-(`parse_xml.get_full_text_for_embedding`). Reference lists sit in JATS
-`<back>`, not `<body>`, so the citation-formatting giveaway the issue worried
-about is structurally impossible. Headings and document length are the
-channels that *are* exposed.
+The embedded text is `title [SEP] abstract [SEP] body_text`, where
+`body_text` is the JATS `<body>` sections rendered as `## Heading` followed
+by their paragraphs (`parse_xml.parse_jats_xml`, stored by
+`add_fulltext.py`). Note that `parse_xml.get_full_text_for_embedding`, which
+would add authors and categories, is **not** used by the pipeline — it is
+only reachable from that module's own CLI. So author names and affiliations
+never reach the model, and the category enters as a one-hot classifier
+feature rather than as text.
+
+That leaves section headings and every length derived from the body as the
+exposed format channels. Reference lists sit in `<back>`, not `<body>`, so
+the citation-formatting giveaway the issue worried about is structurally
+impossible. The `counts` block deliberately mixes exposed features
+(paragraph and section counts, body and abstract length) with unexposed ones
+(reference counts and years, author and affiliation counts) — see the
+exploitable-subset result below for the separation.
 
 Every block is reduced to 256 dimensions and fed to multinomial logistic
 regression (C=10), mirroring the deployed model's PCA + classifier half.
@@ -290,10 +301,13 @@ model can currently see — the biggest marginal contribution measured here,
 from data the model has never been given. Extracting `<ref-list>` sources
 needs no GPU and the XML is already local.
 
-**Author names are inconclusive, not null.** The authors block retains 3% of
-its variance under reduction: 78,000 near-orthogonal names cannot be
-represented in 256 dimensions. The +0.1pp on top of scope measures the
-bottleneck, not the signal, and a fair test needs a different reduction.
+**The authors block is a control, and an inconclusive one.** Author names are
+not embedded, so this was never testing a leak. It is also not a clean null:
+the block retains 3% of its variance under reduction, because 78,000
+near-orthogonal names cannot be represented in 256 dimensions. The +0.1pp on
+top of scope measures the bottleneck, not the signal. (The "all visible" row
+is consequently mislabelled — it includes authors, which are not visible. It
+is indistinguishable from `scope + format` either way.)
 
 The same caveat applies in the other direction across the table: reduction
 preserves 100% of the counts block and 48% of headings but only 10% of scope
