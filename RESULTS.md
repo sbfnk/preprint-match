@@ -283,6 +283,38 @@ Community Health; house style can. Format does not decide the field, it
 decides the journal within the field — which is exactly the decision being
 asked of the model, so the effect lands where it is least welcome.
 
+**Almost all of the format effect is exploitable, and headings are half of
+it.** Restricting the format block to features the model can actually see —
+section headings plus body-derived lengths, dropping reference counts,
+reference years and author counts — barely changes the marginal contribution
+(+3.0pp acc@1 rather than +3.2pp). Splitting the two exposed channels:
+
+| | acc@1 | acc@10 | MRR | Marginal acc@1 |
+|---|---|---|---|---|
+| scope | 14.3% | 53.1% | 0.263 | — |
+| scope + length | 15.3% | 53.3% | 0.273 | +1.0pp |
+| scope + headings | 15.9% | 53.6% | 0.277 | +1.6pp |
+| scope + both | 17.3% | 55.0% | 0.292 | +3.0pp |
+| visible format alone | 12.7% | 41.2% | 0.220 | — |
+| hidden format alone (unexposed) | 8.8% | 30.8% | 0.164 | — |
+
+Headings carry slightly over half the exposed effect, length about a third,
+and the two are mildly complementary (1.6 + 1.0 < 3.0). Only headings can be
+removed cleanly — dropping the `## Title` prefix in `parse_xml.parse_jats_xml`
+leaves the paragraphs untouched — so the cheap fix addresses about half the
+contamination. Length is structural: longer papers produce more 512-token
+chunks and the embedding is their mean, so neutralising it means truncating
+to a fixed budget and discarding real content.
+
+The cost is a full re-embed of both the training and prediction sets (~50h
+A40) plus retraining, and the re-embed dominates regardless of what else
+changes. That argues for folding a heading strip into the next model rebuild
+rather than running one for it alone — particularly alongside the cited-journal
+block (#14), which needs the same rebuild and is worth considerably more.
+Note also that these are TF-IDF-proxy figures: a retrained SPECTER2 would
+likely recover part of the 1.6pp from other cues, so it is an upper bound on
+what removal would cost in accuracy.
+
 **House style is near-diagnostic but sparse.** Headings with the highest lift
 over their corpus rate are mandated sections: "Experimental Design and
 Statistical Analyses" for J Neurosci (×65), "Statistics and Reproducibility"

@@ -162,6 +162,18 @@ def extract_features(xml_path):
 
 NUMERIC_KEYS = None  # fixed on first use, so column order stays stable
 
+# Which numeric features the embedded text actually carries. body_text is
+# "## Heading" plus paragraphs, so section and paragraph counts and every
+# length derived from them are exposed; reference lists, author lists and
+# affiliations are not, because they live outside <body>.
+LENGTH_COUNTS = ["n_paragraphs", "abstract_words", "body_chars",
+                 "title_words", "mean_para_chars"]
+VISIBLE_COUNTS = LENGTH_COUNTS + ["n_sections", "title_has_colon",
+                                  "structured_abstract"]
+HIDDEN_COUNTS = ["n_authors", "n_affiliations", "n_figures", "n_tables",
+                 "n_equations", "n_refs", "median_ref_year",
+                 "ref_year_spread"]
+
 
 def _worker(args):
     i, path = args
@@ -194,13 +206,19 @@ def build_matrices(feats, train_mask):
     head_vec.fit([f["headings"] for f, m in zip(feats, train_mask) if m])
     blocks["headings"] = head_vec.transform([f["headings"] for f in feats])
 
-    num = np.array([[f["numeric"][k] for k in NUMERIC_KEYS] for f in feats],
-                   dtype=np.float64)
-    # Counts are heavy-tailed; log1p before scaling so a 500-reference paper
-    # does not dominate the block.
-    num = np.log1p(np.clip(num, 0, None))
-    scaler = StandardScaler().fit(num[train_mask])
-    blocks["counts"] = sparse.csr_matrix(scaler.transform(num))
+    def numeric(name, keys):
+        M = np.array([[f["numeric"][k] for k in keys] for f in feats],
+                     dtype=np.float64)
+        # Counts are heavy-tailed; log1p before scaling so a 500-reference
+        # paper does not dominate the block.
+        M = np.log1p(np.clip(M, 0, None))
+        scaler = StandardScaler().fit(M[train_mask])
+        blocks[name] = sparse.csr_matrix(scaler.transform(M))
+
+    numeric("counts", NUMERIC_KEYS)
+    numeric("visible counts", VISIBLE_COUNTS)
+    numeric("length", LENGTH_COUNTS)
+    numeric("hidden counts", HIDDEN_COUNTS)
 
     return blocks, head_vec
 
@@ -427,15 +445,22 @@ def main():
     print("\nSingle blocks:", file=sys.stderr)
     results = [baseline] + [
         evaluate(reduced[n], y, tr, te, n, explained[n])
-        for n in ("scope", "authors", "headings", "counts", "citations")]
+        for n in ("scope", "authors", "headings", "counts", "visible counts",
+                  "hidden counts", "citations")]
 
     print("\nCombinations (blocks reduced separately, then concatenated):",
           file=sys.stderr)
     combos = {
         "format only": ("headings", "counts"),
+        "visible format": ("headings", "visible counts"),
         "scope+format": ("scope", "headings", "counts"),
+        # These three separate the two exposed channels: only headings can be
+        # removed from the pipeline cleanly, so their split decides whether a
+        # rebuild without them is worth the re-embedding cost.
+        "scope+visible fmt": ("scope", "headings", "visible counts"),
+        "scope+headings": ("scope", "headings"),
+        "scope+length": ("scope", "length"),
         "scope+auth": ("scope", "authors"),
-        "all visible": ("scope", "authors", "headings", "counts"),
         "everything": ("scope", "authors", "headings", "counts", "citations"),
     }
     for label, names in combos.items():
