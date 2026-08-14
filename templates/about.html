@@ -102,7 +102,7 @@
         </p>
 
         <p>
-            Part of the match is house style rather than science. Authors usually format a manuscript for the journal they are targeting before they post it as a preprint, and the model reads section headings and document length along with the text. We measured this: section structure and length alone, stripped of every topical word, predict the top-10 journals for 43% of papers, and adding them on top of topic raises exact-journal accuracy by about a fifth. Topic remains the dominant signal by some way, but the formatting effect concentrates on the top-1 prediction. A preprint written in a generic format may rank differently from the same science formatted for a specific journal.
+            Authors usually format a manuscript for the journal they are targeting before posting it as a preprint, and the model does see section headings and document length along with the text, so we checked whether it was matching on house style rather than science. It mostly isn't: re-scoring 1,500 held-out papers with every section heading deleted moved the top prediction for only 11% of them and changed exact-journal accuracy by half a percentage point. Simple structural features do carry journal information in isolation, but the model turns out to lean on content instead. Document length is the part we cannot rule out, since a short report and a long cohort study differ in ways the model does read.
         </p>
 
         <p>

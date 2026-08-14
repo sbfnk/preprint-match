@@ -306,14 +306,9 @@ contamination. Length is structural: longer papers produce more 512-token
 chunks and the embedding is their mean, so neutralising it means truncating
 to a fixed budget and discarding real content.
 
-The cost is a full re-embed of both the training and prediction sets (~50h
-A40) plus retraining, and the re-embed dominates regardless of what else
-changes. That argues for folding a heading strip into the next model rebuild
-rather than running one for it alone — particularly alongside the cited-journal
-block (#14), which needs the same rebuild and is worth considerably more.
-Note also that these are TF-IDF-proxy figures: a retrained SPECTER2 would
-likely recover part of the 1.6pp from other cues, so it is an upper bound on
-what removal would cost in accuracy.
+These are TF-IDF-proxy figures, though, and the proxy turns out to mislead —
+see Experiment 5b, which measures the deployed model directly and finds it
+barely uses headings at all.
 
 **House style is near-diagnostic but sparse.** Headings with the highest lift
 over their corpus rate are mandated sections: "Experimental Design and
@@ -347,6 +342,50 @@ and 30% of citations, so the sparse text blocks are systematically
 handicapped. The scope-versus-format gap is wider than these numbers show,
 which makes the format contribution an upper bound rather than a point
 estimate.
+
+---
+
+## Experiment 5b: Does the Deployed Model Actually Use Headings?
+
+Experiment 5 works on TF-IDF proxies. This measures the served model, with
+`probe_heading_sensitivity.py`: embed the same papers twice with the
+fine-tuned adapter — once as stored, once with every `## Heading` line
+deleted — score both through `model-v5`, and compare. 1,500 held-out papers,
+all of which carry headings (mean 17.5 each), so the effect is not diluted by
+papers that could not be affected.
+
+| | acc@1 | acc@10 | MRR |
+|---|---|---|---|
+| with headings | 22.3% | 68.9% | 0.368 |
+| headings stripped | 21.7% | 69.1% | 0.364 |
+| delta | −0.5pp | +0.2pp | −0.004 |
+
+Top-1 prediction unchanged for 88.8% of papers, top-5 overlap 91.8%, mean
+cosine between the two probability vectors 0.990.
+
+### Discussion
+
+**The proxy result does not transfer.** TF-IDF gains 1.6pp acc@1 from
+headings; SPECTER2 loses 0.5pp when they are removed, which is within noise
+at this sample size, and acc@10 moves the wrong way for a real effect. The
+strip also puts the input off-distribution, which should exaggerate the
+damage rather than hide it.
+
+The mechanism is plausible in hindsight. For TF-IDF, "code accessibility" is
+a discrete token carrying its own weight. For SPECTER2 a heading is a few
+tokens inside one of roughly 25 chunks of 512, and the paper embedding is the
+mean over chunks, so a heading contributes on the order of a thousandth of
+the representation. Discrete features that look decisive to a bag-of-words
+model can be almost invisible to a mean-pooled transformer.
+
+**Consequence: do not strip headings.** There is nothing meaningful to
+remove, and a rebuild for that purpose would spend ~50h of A40 time to change
+half a percentage point. The remaining format channel is document length,
+which is structural and was not tested here.
+
+**Consequence for reading Experiment 5.** Its format numbers describe the
+feature blocks, not the deployed model. Any claim about what the served model
+leans on needs the direct measurement.
 
 ---
 
