@@ -53,7 +53,16 @@ def classify(referrer):
 
 
 def pull_live_db(dest):
-    """SFTP the live analytics DB off the Fly volume to `dest`."""
+    """SFTP the live analytics DB off the Fly volume to `dest`.
+
+    The write-ahead log has to come with it. The app opens the DB in WAL
+    mode, so recent hits sit in ``analytics.db-wal`` until SQLite
+    checkpoints them (by default only once the log passes 1000 pages, which
+    at this traffic takes a couple of days). Copying the main database on
+    its own silently drops everything since the last checkpoint — which is
+    exactly the recent window a snapshot is usually read for. Fetching the
+    sidecars alongside it lets SQLite replay the log on open.
+    """
     env = dict(os.environ)
     if not env.get("FLY_API_TOKEN") and not env.get("FLY_ACCESS_TOKEN"):
         cfg = os.path.expanduser("~/.fly/config.yml")
@@ -62,8 +71,31 @@ def pull_live_db(dest):
                 m = re.search(r"access_token:\s*(\S+)", fh.read())
                 if m:
                     env["FLY_ACCESS_TOKEN"] = m.group(1)
-    cmd = ["flyctl", "ssh", "sftp", "get", REMOTE_DB, dest, "--app", APP]
-    subprocess.run(cmd, check=True, env=env)
+
+    def fetch(remote, local, required):
+        # flyctl refuses to overwrite, so clear the target first.
+        if os.path.exists(local):
+            os.remove(local)
+        cmd = ["flyctl", "ssh", "sftp", "get", remote, local, "--app", APP]
+        res = subprocess.run(cmd, env=env, capture_output=True, text=True)
+        if res.returncode != 0 or not os.path.exists(local):
+            if required:
+                raise RuntimeError(
+                    f"could not fetch {remote}: {res.stderr.strip()}")
+            return False
+        return True
+
+    fetch(REMOTE_DB, dest, required=True)
+    # Absent sidecars are normal — a cleanly shut down DB has none.
+    for suffix in ("-wal", "-shm"):
+        fetch(REMOTE_DB + suffix, dest + suffix, required=False)
+
+    # Fold the log into the main file so later readers see a complete DB.
+    conn = sqlite3.connect(dest)
+    try:
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    finally:
+        conn.close()
     return dest
 
 
