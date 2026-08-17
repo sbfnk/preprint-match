@@ -16,6 +16,7 @@ Usage:
   python3 extract_labeled_data.py --server both   [--start-date ...] [--output ...]
 """
 
+import html
 import json
 import csv
 import time
@@ -168,7 +169,10 @@ def build_from_pubs(pubs: list, progress_file: Optional[str] = None) -> list:
                 'authors': p.get('preprint_authors', ''),
                 'category': p.get('preprint_category', ''),
                 'date': p.get('preprint_date', ''),
-                'journal': p.get('published_journal', ''),
+                # /pubs returns HTML-escaped names ("X &amp; Y") while
+                # Crossref returns them raw, and the two spellings otherwise
+                # train as separate journals.
+                'journal': html.unescape(p.get('published_journal', '')),
                 'publisher': '',
                 'citation_count': 0,
                 'source': p.get('_source', 'medrxiv'),
@@ -200,7 +204,7 @@ def lookup_journal_crossref(doi: str) -> Optional[dict]:
             data = json.load(response)
             msg = data.get('message', {})
             return {
-                'journal': msg.get('container-title', [''])[0],
+                'journal': html.unescape(msg.get('container-title', [''])[0]),
                 'publisher': msg.get('publisher', ''),
                 'type': msg.get('type', ''),
                 'citation_count': msg.get('is-referenced-by-count', 0),

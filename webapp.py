@@ -128,10 +128,42 @@ def load_data(predictions_dir):
                   f"({nb['journal_idx'].shape[0]} vs {len(DATA['papers'])}) "
                   f"— ignoring")
 
+    # A handful of journals reach the model twice: the medRxiv /pubs feed
+    # gives HTML-escaped names ("X &amp; Y") while Crossref gives raw ones
+    # ("X & Y"), so the two spellings train as separate classes. Once the
+    # names are unescaped above they collide, which showed up as the same
+    # journal listed twice on a paper page, an unreachable journal page for
+    # the smaller column, and duplicate URLs in the sitemap.
+    #
+    # Fold each duplicate into the first column and retire it. The addition
+    # is in place because a second copy of the probability matrix (~600MB)
+    # would not fit alongside the first in the container's memory.
+    merged, first_by_name = {}, {}
+    for i, j in enumerate(DATA["journals"]):
+        keep = first_by_name.setdefault(j["name"], i)
+        if keep != i:
+            merged[i] = keep
+    if merged:
+        for drop, keep in merged.items():
+            if DATA["proba"] is not None:
+                DATA["proba"][:, keep] += DATA["proba"][:, drop]
+                DATA["proba"][:, drop] = 0
+            DATA["journals"][keep]["training_papers"] += (
+                DATA["journals"][drop]["training_papers"])
+        print(f"Merged {len(merged)} duplicate journal columns "
+              f"(HTML-escaped name variants)")
+    DATA["merged_journals"] = merged
+    DATA["active_journals"] = [j for i, j in enumerate(DATA["journals"])
+                               if i not in merged]
+    # meta.json counts raw columns, so keep the advertised total in step
+    # with the journals actually reachable.
+    DATA["meta"]["n_journals"] = len(DATA["active_journals"])
+
     # Build lookup indices
     DATA["paper_by_doi"] = {p["doi"]: i for i, p in enumerate(DATA["papers"])}
     DATA["journal_by_name"] = {
         j["name"]: i for i, j in enumerate(DATA["journals"])
+        if i not in merged
     }
 
     # Precompute sorted probability columns for fast percentile lookups
@@ -155,7 +187,7 @@ def load_data(predictions_dir):
 
     # Group journals by first letter for browsing
     letters = {}
-    for j in DATA["journals"]:
+    for j in DATA["active_journals"]:
         first = j["name"][0].upper()
         letters.setdefault(first, []).append(j)
     DATA["journal_letters"] = dict(sorted(letters.items()))
@@ -495,8 +527,8 @@ def index():
     return render_template(
         "index.html",
         meta=DATA["meta"],
-        n_journals=len(DATA["journals"]),
-        journals=DATA["journals"],
+        n_journals=len(DATA["active_journals"]),
+        journals=DATA["active_journals"],
         letters=DATA["journal_letters"],
         categories=cats,
     )
@@ -509,7 +541,7 @@ def about():
     """About page."""
     meta = dict(DATA["meta"])
     meta["n_papers_training"] = sum(
-        j["training_papers"] for j in DATA["journals"]
+        j["training_papers"] for j in DATA["active_journals"]
     )
     return render_template("about.html", meta=meta)
 
@@ -571,7 +603,7 @@ def sitemap_pages():
     """Static pages and every journal page."""
     urls = [f"{SITE_URL}/", f"{SITE_URL}/about", f"{SITE_URL}/feed"]
     urls += [f"{SITE_URL}/journal/" + quote(j["name"], safe="")
-             for j in DATA["journals"]]
+             for j in DATA["active_journals"]]
     return _urlset(urls)
 
 
@@ -662,6 +694,10 @@ def paper_view(doi):
                 break
 
         for rank, j_idx in enumerate(ranked[:30]):
+            # Retired duplicate columns hold no probability now that it has
+            # been folded into their surviving twin.
+            if int(j_idx) in DATA["merged_journals"]:
+                continue
             j = DATA["journals"][j_idx]
             prob = float(row[j_idx])
             baseline = float(DATA["proba_mean"][j_idx]) if DATA["proba_mean"] is not None else 0
@@ -1039,7 +1075,7 @@ def api_search():
 
     q_words = q_lower.split()
 
-    for j in DATA["journals"]:
+    for j in DATA["active_journals"]:
         name_lower = j["name"].lower()
         name_stripped = (name_lower[4:] if name_lower.startswith("the ")
                          else name_lower)
