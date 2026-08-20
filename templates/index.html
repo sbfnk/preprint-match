@@ -193,7 +193,14 @@ let selectedCategories = JSON.parse(localStorage.getItem('feed_categories') || '
 let selectedKeywords = JSON.parse(localStorage.getItem('feed_keywords') || '[]');
 const allCategories = {{ categories | tojson }};
 
-function escapeHtml(s) {
+    // Match the slash-preserving form used in the sitemap and canonical
+    // tags; encodeURIComponent would escape the DOI's slash to %2F and
+    // create a second URL for every paper.
+    function paperHref(doi) {
+        return '/paper/' + doi.split('/').map(encodeURIComponent).join('/');
+    }
+
+    function escapeHtml(s) {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
             .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
@@ -445,7 +452,7 @@ function loadFeed() {
                             ${i + 1}
                         </div>
                         <div class="flex-1 min-w-0">
-                            <a href="/paper/${encodeURIComponent(p.doi)}" class="text-base font-semibold text-surface-900 dark:text-white hover:text-brand-600 dark:hover:text-brand-400 transition-colors leading-snug">${escapeHtml(p.title)}</a>
+                            <a href="${paperHref(p.doi)}" class="text-base font-semibold text-surface-900 dark:text-white hover:text-brand-600 dark:hover:text-brand-400 transition-colors leading-snug">${escapeHtml(p.title)}</a>
                             ${p.authors ? '<p class="text-sm text-surface-400 mt-0.5 truncate">' + escapeHtml(p.authors) + '</p>' : ''}
                             <div class="flex flex-wrap gap-2 mt-1.5 text-xs text-surface-500 dark:text-surface-300">
                                 <span>${p.date}</span>
@@ -562,9 +569,9 @@ searchBox.addEventListener('input', function() {
                     html += '<div class="px-5 pt-3 pb-1 text-[10px] font-semibold text-surface-400 uppercase tracking-widest">Click a paper to see journal predictions</div>';
                     data.papers.forEach(p => {
                         const idx = currentItems.length;
-                        currentItems.push({ href: `/paper/${encodeURIComponent(p.doi)}` });
+                        currentItems.push({ href: paperHref(p.doi) });
                         html += `
-                            <a href="/paper/${encodeURIComponent(p.doi)}"
+                            <a href="${paperHref(p.doi)}"
                                data-idx="${idx}"
                                class="search-item flex items-center gap-3 px-5 py-3 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors cursor-pointer">
                                 <div class="w-8 h-8 rounded-lg bg-surface-100 dark:bg-surface-600 flex items-center justify-center flex-shrink-0">

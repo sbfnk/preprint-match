@@ -26,7 +26,7 @@ from xml.sax.saxutils import escape
 
 import numpy as np
 from flask import (Flask, render_template, jsonify, request, abort, Response,
-                   send_from_directory)
+                   redirect, send_from_directory)
 
 app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 3600  # cache static files 1 hour
@@ -164,6 +164,10 @@ def load_data(predictions_dir):
     DATA["journal_by_name"] = {
         j["name"]: i for i, j in enumerate(DATA["journals"])
         if i not in merged
+    }
+    # Case-insensitive fallback, so a renamed journal redirects rather than 404s.
+    DATA["journal_by_lower"] = {
+        j["name"].lower(): j["name"] for j in DATA["active_journals"]
     }
 
     # Precompute sorted probability columns for fast percentile lookups
@@ -624,7 +628,18 @@ def sitemap_papers(chunk):
 def journal_view(name):
     """Journal detail — top predicted preprints."""
     if name not in DATA["journal_by_name"]:
-        abort(404)
+        # Journal names get recanonicalised when the training labels are
+        # refreshed ("Plant And Cell Physiology" became "Plant and Cell
+        # Physiology"), which would otherwise 404 every URL Google had
+        # already indexed under the old spelling. Send those to the current
+        # name instead of dropping them.
+        canonical = DATA["journal_by_lower"].get(name.lower())
+        if canonical is None:
+            abort(404)
+        target = "/journal/" + quote(canonical, safe="")
+        if request.query_string:
+            target += "?" + request.query_string.decode()
+        return redirect(target, code=301)
 
     days = request.args.get("days", type=int, default=None)
     top_k = min(request.args.get("top_k", type=int, default=20), 200)
