@@ -132,4 +132,21 @@ jobs:
         uses: superfly/flyctl-actions/setup-flyctl@master
 
       - name: Run fly deploy
-        run: flyctl deploy --remote-only
+        # The build context is well over a gigabyte, most of it abstracts.db,
+        # and the upload to the remote builder occasionally drops part-way
+        # with "rpc error: code = Unavailable". That leaves the site serving
+        # the previous day's data until the next scheduled run, so retry
+        # rather than fail the whole refresh on a flaky transfer.
+        run: |
+          for attempt in 1 2 3; do
+            echo "::group::fly deploy (attempt $attempt/3)"
+            if flyctl deploy --remote-only; then
+              echo "::endgroup::"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "Deploy attempt $attempt failed"
+            if [ "$attempt" -lt 3 ]; then sleep $((attempt * 60)); fi
+          done
+          echo "::error::fly deploy failed after 3 attempts"
+          exit 1
