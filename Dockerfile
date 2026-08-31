@@ -15,6 +15,9 @@ COPY predictions/proba_matrix.npz predictions/
 COPY predictions/papers_slim.json predictions/papers_slim.json
 COPY predictions/abstracts.db predictions/
 COPY predictions/journals.json predictions/
+# Per-journal quantile thresholds; without these the app sorts the
+# probability matrix at boot and doubles its memory footprint.
+COPY predictions/percentile_grid.npz predictions/
 COPY predictions/meta.json predictions/
 # "Similar papers" evidence: compact index arrays + their DOI side table.
 COPY predictions/neighbours.npz predictions/

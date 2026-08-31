@@ -35,11 +35,45 @@ def _authors_to_str(authors):
     return authors or ""
 
 
+# Percentile levels the grid stores, in hundredths of a point across the
+# whole range. The UI rounds to whole points below the 99th and to tenths
+# above it, so this keeps the rendered label identical to what an exact rank
+# would produce; a coarser grid disagreed on about a quarter of labels.
+PERCENTILE_LEVELS = np.round(np.arange(0.0, 100.0 + 1e-9, 0.01), 2)
+
+
+def build_percentile_grid(output_dir, proba):
+    """Store per-journal quantile thresholds for percentile ranking.
+
+    The web app used to keep ``np.sort(proba, axis=0)`` in memory purely to
+    binary-search one column per lookup, which cost as much RAM as the
+    probability matrix itself (~600MB). The thresholds reproduce the same
+    ranking to within the grid resolution for about a thousandth of that.
+
+    Columns are quantiled one at a time so peak memory stays at one column.
+    """
+    output_dir = Path(output_dir)
+    n_journals = proba.shape[1]
+    # float16 to match the matrix being searched, so comparisons are exact in
+    # the same precision. Casting keeps the thresholds non-decreasing.
+    grid = np.empty((n_journals, len(PERCENTILE_LEVELS)), dtype=np.float16)
+    qs = PERCENTILE_LEVELS / 100.0
+    for j in range(n_journals):
+        grid[j] = np.quantile(proba[:, j].astype(np.float32), qs)
+    np.savez_compressed(output_dir / "percentile_grid.npz",
+                        levels=PERCENTILE_LEVELS.astype(np.float32),
+                        thresholds=grid)
+    print(f"  percentile_grid.npz {grid.shape} "
+          f"({grid.nbytes / 1e6:.1f}MB in memory)", file=sys.stderr)
+
+
 def build_web_artifacts(output_dir):
     """Build the slimmed-down artifacts the web app serves.
 
     Reads the canonical ``papers.json`` + ``proba_matrix.npz`` and writes:
       * ``proba_matrix.npz`` rewritten as float16 (halves the matrix in RAM)
+      * ``percentile_grid.npz`` — per-journal quantile thresholds, so the web
+        app can rank a probability without holding a sorted copy of the matrix
       * ``abstracts.db`` — SQLite FTS5 index over title/abstract/authors,
         keyed by DOI, so abstracts live on disk instead of the Python heap
       * ``papers_slim.json`` — papers list with the ``abstract`` field dropped
@@ -58,6 +92,7 @@ def build_web_artifacts(output_dir):
                   f"({proba.shape})", file=sys.stderr)
         else:
             print(f"  {proba_path.name} already float16", file=sys.stderr)
+        build_percentile_grid(output_dir, proba)
 
     # --- neighbour evidence placeholders ---
     # The Dockerfile copies these unconditionally, so they must exist even

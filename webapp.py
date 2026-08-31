@@ -170,9 +170,35 @@ def load_data(predictions_dir):
         j["name"].lower(): j["name"] for j in DATA["active_journals"]
     }
 
-    # Precompute sorted probability columns for fast percentile lookups
+    # Percentile ranking runs off precomputed per-journal quantile thresholds.
+    # Sorting the matrix here instead would rank identically but cost a second
+    # copy of it (~600MB) to serve one binary search per lookup.
+    grid_path = d / "percentile_grid.npz"
+    DATA["pct_levels"] = DATA["pct_thresholds"] = None
+    if grid_path.exists() and DATA["proba"] is not None:
+        g = np.load(grid_path)
+        if g["thresholds"].shape[0] == DATA["proba"].shape[1]:
+            DATA["pct_levels"] = g["levels"]
+            DATA["pct_thresholds"] = g["thresholds"]
+        else:
+            print(f"Percentile grid out of step with the matrix "
+                  f"({g['thresholds'].shape[0]} vs {DATA['proba'].shape[1]}) "
+                  f"— falling back to sorting")
+
     if DATA["proba"] is not None:
-        DATA["proba_sorted"] = np.sort(DATA["proba"], axis=0)
+        if DATA["pct_thresholds"] is None:
+            # Older predictions dirs have no grid; keep serving correctly.
+            DATA["proba_sorted"] = np.sort(DATA["proba"], axis=0)
+        else:
+            DATA["proba_sorted"] = None
+            # Merging changed these columns after the grid was built, so
+            # requantile just those rather than trusting stale thresholds.
+            if merged:
+                qs = DATA["pct_levels"].astype(np.float64) / 100.0
+                thr = DATA["pct_thresholds"]
+                for keep in set(merged.values()):
+                    thr[keep] = np.quantile(
+                        DATA["proba"][:, keep].astype(np.float32), qs)
         # float32 accumulator avoids precision loss on small column means
         DATA["proba_mean"] = DATA["proba"].mean(axis=0, dtype=np.float32)
     else:
@@ -296,10 +322,16 @@ def similar_papers(paper_idx, self_doi):
 
 
 def percentile(prob_value, j_idx):
-    """Compute percentile rank of a probability value for a journal column.
+    """Percentile rank of a probability value within its journal column.
 
-    Uses binary search on the pre-sorted column — O(log n) per call.
+    Binary-searches the journal's quantile thresholds, which gives the same
+    "fraction of preprints scoring no higher" as searching the sorted column
+    would, at the resolution the grid was built with.
     """
+    if DATA["pct_thresholds"] is not None:
+        thr = DATA["pct_thresholds"][j_idx]
+        i = int(np.searchsorted(thr, prob_value, side="right"))
+        return float(DATA["pct_levels"][min(i, len(thr) - 1)])
     sorted_col = DATA["proba_sorted"][:, j_idx]
     rank = np.searchsorted(sorted_col, prob_value, side="right")
     return rank / len(sorted_col) * 100
