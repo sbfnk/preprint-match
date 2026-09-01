@@ -389,6 +389,57 @@ leans on needs the direct measurement.
 
 ---
 
+## Experiment 5c: Do Cited Journals Help the Real Classifier?
+
+Experiment 5 found that cited journals alone predict the destination about as
+well as the whole title and abstract, and added +5.2pp acc@10 on top of every
+other block — the largest marginal gain measured there, from data the model
+never sees. This tests it against the deployed classifier rather than the
+proxy, with `evaluate_citations.py`.
+
+### Method
+
+Same embeddings, split and hyperparameters as the served model. The baseline
+is PCA-256 over the fine-tuned SPECTER2 embeddings plus the category one-hot,
+multinomial logistic regression at C=10 — `model-v5`'s classifier half. The
+treatment appends an SVD-256 reduction of a TF-IDF bag of cited journal names,
+extracted from `<ref-list>/ref//source` by `extract_citations.py` (173,789 of
+186,824 papers, 93%). Papers without local XML get a zero block, which is what
+inference would give them. 119,004 train / 33,031 test, 1,484 journals.
+
+The baseline reproduces the served model closely (deployed v5 ensemble:
+21.7% / 65.5% / 0.354), so the harness is measuring the real thing.
+
+### Results
+
+| | acc@1 | acc@5 | acc@10 | MRR |
+|---|---|---|---|---|
+| baseline (deployed classifier) | 21.5% | 51.5% | 66.2% | 0.356 |
+| + cited journals | 21.7% | 52.0% | 66.8% | 0.359 |
+| marginal | +0.2pp | +0.5pp | +0.5pp | +0.002 |
+
+### Discussion
+
+**The proxy overestimated by roughly tenfold** (+5.2pp predicted, +0.5pp
+actual on acc@10). The reason is that SPECTER2 is pre-trained on citation
+graphs: its objective is that papers citing one another are similar, so which
+journals a paper cites is already encoded in the embedding. The explicit
+feature is largely redundant with what the model has.
+
+**Not worth adding.** +0.5pp acc@10 would cost a reference list for every
+paper, which requires the full-text XML that new papers currently lack — high
+cost, coupled to an unsolved problem, for a gain near noise.
+
+**The proxy has now misled twice in the same direction**: headings +1.6pp
+predicted against −0.5pp actual (5b), citations +5.2pp against +0.5pp (5c). A
+TF-IDF ablation answers "is this signal present in the data", which is not the
+same question as "is the model missing this signal". Against a strong
+pre-trained embedding, most signals are already captured, so proxy gains
+should be treated as an upper bound and confirmed on the real model before
+anything is built on them.
+
+---
+
 ## Current Results (v4, combined dataset)
 
 Model v4 uses the combined medRxiv + bioRxiv dataset (165,692 papers, 95% with full text). Evaluated on 29,150 test papers across 1,385 journals with ≥10 training papers.
