@@ -16,6 +16,7 @@ labeled_*progress*.jsonl
 test_labeled.json
 test_progress.jsonl
 doi_to_xml.json
+doi_to_xml.*.json
 embeddings/
 *.npy
 *.npz

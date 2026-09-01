@@ -211,11 +211,15 @@ that embedding after a backfill unless it is explicitly redone. Re-embedding
 just the affected rows takes hours; a full pass takes about thirty.
 
 ```bash
-# One-off, and only if embeddings.npz predates provenance tracking: adopt the
-# current papers.json full-text state as the record of how each row was built.
-# Run this BEFORE extending xml/, while papers.json still reflects the old
-# corpus, or it will mark rows as full-text that were never embedded that way.
-python3 precompute.py --skip-fetch --init-fulltext-flags
+# BEFORE the backfill: snapshot the XML index. It is the record of which
+# papers had full text at embedding time, and rebuilding it after extending
+# xml/ destroys that information.
+cp doi_to_xml.json doi_to_xml.before_backfill.json
+
+# One-off, only if embeddings.npz predates provenance tracking. papers.json
+# does not retain full_text, so derive the flags from the snapshot index.
+python3 precompute.py --skip-fetch --init-fulltext-flags \
+  --fulltext-index doi_to_xml.before_backfill.json
 
 # After extending xml/ and re-running add_fulltext.py over papers.json:
 python3 precompute.py --skip-fetch --reembed-fulltext-gained \

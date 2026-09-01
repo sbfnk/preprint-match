@@ -509,6 +509,10 @@ def main():
     parser.add_argument("--init-fulltext-flags", action="store_true",
                         help="Record which existing embeddings used full text, "
                              "taken from papers.json, without re-embedding")
+    parser.add_argument("--fulltext-index",
+                        help="With --init-fulltext-flags, derive provenance "
+                             "from this doi->xml index (snapshot it before a "
+                             "backfill extends it) instead of papers.json")
     parser.add_argument("--reembed-fulltext-gained", action="store_true",
                         help="Re-embed only papers that have gained full text "
                              "since they were last embedded")
@@ -602,8 +606,22 @@ def main():
         if emb is None:
             print("No embeddings.npz to annotate.", file=sys.stderr)
             raise SystemExit(2)
-        flags = np.array([bool(p.get("full_text")) for p in papers[:len(emb)]],
-                         dtype=bool)
+        # papers.json does not retain full_text, so by default there would be
+        # nothing to read. Deriving the flags from the DOI->XML index used at
+        # the time is equivalent and far cheaper than reparsing every file:
+        # the build attaches full text to exactly those papers the index
+        # resolves. Snapshot that index before a backfill extends it.
+        index_path = getattr(args, "fulltext_index", None)
+        if index_path:
+            with open(index_path) as f:
+                indexed = set(json.load(f))
+            flags = np.array([p.get("doi") in indexed for p in papers[:len(emb)]],
+                             dtype=bool)
+            print(f"Deriving provenance from {index_path} "
+                  f"({len(indexed):,} DOIs indexed)", file=sys.stderr)
+        else:
+            flags = np.array([bool(p.get("full_text")) for p in papers[:len(emb)]],
+                             dtype=bool)
         if len(flags) != len(emb):
             print(f"papers.json ({len(papers)}) shorter than embeddings "
                   f"({len(emb)}) — refusing to guess.", file=sys.stderr)
