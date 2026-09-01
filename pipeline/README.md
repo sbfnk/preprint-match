@@ -94,7 +94,102 @@ All scripts live in the project root.
 
 - Python 3.10+ with dependencies installed (see `venv/`)
 - Access to the LSHTM HPC cluster for GPU steps (fine-tuning, embedding generation)
-- MECA XML files in `xml/` (approximately 70k files)
+- MECA XML files in `xml/` — see Step 0
+- An AWS account for Step 0 only (the source buckets are requester-pays)
+
+---
+
+### Step 0: Download full-text XML from S3
+
+**Where:** an EC2 instance in the bucket's region (see the cost note below)
+**Time:** hours, dominated by transfer
+**Output:** flattened `.xml` files in `xml/`
+
+Full text comes from Cold Spring Harbor's MECA archives. **There are two
+buckets and both are needed** — a quarter of the corpus is medRxiv, and every
+preprint issued under the newer `10.64898` DOI prefix is medRxiv. Coverage has
+historically been uneven between them (measured 2026-09-01 against the
+deployed set: bioRxiv 88.3%, medRxiv 60.7%), so check both before assuming a
+gap is only about recent months:
+
+| Server | Bucket |
+|---|---|
+| bioRxiv | `s3://biorxiv-src-monthly` |
+| medRxiv | `s3://medrxiv-src-monthly` |
+
+Both are **requester-pays**: all access, including a bare `ls`, must be
+authenticated and is billed to the requesting account. Anonymous requests are
+refused outright.
+
+Layout is the same in each: `Back_Content/Batch_[nn]/` holds the initial bulk
+load, and `Current_Content/<Month>_<Year>/` holds everything since, one folder
+per month (`March_2026/`). Files named `.meca` are zip archives whose
+`content/` folder carries the JATS XML alongside the PDF, figures and
+supplementary material.
+
+**Cost note — this is why the download runs on EC2.** You transfer whole MECA
+packages but keep only the XML from each, so the download is far larger than
+the result (~70k papers yielded 5.5GB of XML). S3 to EC2 within the same
+region is free; S3 to anywhere else is billed per GB. Run the pull and the
+extraction on the instance, then copy out only the extracted XML.
+
+```bash
+# On the EC2 instance
+wget https://github.com/peak/s5cmd/releases/download/v2.3.0/s5cmd_2.3.0_Linux-64bit.tar.gz
+tar xzf s5cmd_2.3.0_Linux-64bit.tar.gz
+
+# Scratch space (NVMe instance storage)
+sudo mkfs -t xfs /dev/nvme1n1 && sudo mkdir /data
+sudo mount /dev/nvme1n1 /data && sudo chown ec2-user:ec2-user /data
+cd /data
+
+# Size the job BEFORE pulling — listing is cheap, transfer is not
+s5cmd --request-payer requester ls 's3://biorxiv-src-monthly/Current_Content/March_2026/*' | wc -l
+
+# Incremental: pull only the months you are missing, from BOTH buckets.
+# A full 'Current_Content/*' pull re-downloads years you already have.
+for m in March_2026 April_2026 May_2026 June_2026 July_2026 August_2026; do
+  s5cmd --request-payer requester cp --sp "s3://biorxiv-src-monthly/Current_Content/$m/*" .
+  s5cmd --request-payer requester cp --sp "s3://medrxiv-src-monthly/Current_Content/$m/*" .
+done
+```
+
+Extract the XML out of the archives and flatten the directory structure:
+
+```bash
+process_meca() {
+    meca="$1"; id=$(basename "$meca" .meca)
+    mkdir -p "xml/$id" 2>/dev/null
+    unzip -qq -j "$meca" "content/*.xml" -d "xml/$id" < /dev/null 2>/dev/null
+}
+export -f process_meca
+find . -name '*.meca' | xargs -P 8 -I{} bash -c 'process_meca "$@"' _ {}
+
+for d in xml/*/; do
+    prefix=$(basename "$d")
+    for f in "$d"*.xml; do
+        [ -f "$f" ] && mv "$f" "xml/$prefix-$(basename "$f")"
+    done
+    rmdir "$d"
+done
+```
+
+Copy `xml/` back (a few GB), then rebuild the DOI index, which `add_fulltext.py`
+and `extract_citations.py` both read:
+
+```bash
+python3 -c "
+from pathlib import Path; from parse_xml import build_doi_index
+import json; json.dump(build_doi_index(Path('xml')), open('doi_to_xml.json','w'))"
+```
+
+**Check coverage afterwards.** `precompute.py` prints full-text coverage on
+every run and stores a `used_fulltext` flag per row in `embeddings.npz`; the
+daily refresh cannot add full text on its own, so coverage decays as new
+preprints arrive and only Step 0 restores it.
+
+Europe PMC is not a substitute: it indexes essentially all of these preprints
+but serves full text for only about 6% of them.
 
 ---
 
