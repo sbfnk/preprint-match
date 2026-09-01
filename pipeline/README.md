@@ -183,6 +183,26 @@ from pathlib import Path; from parse_xml import build_doi_index
 import json; json.dump(build_doi_index(Path('xml')), open('doi_to_xml.json','w'))"
 ```
 
+**Then re-embed only the papers that gained text.** Embeddings are written
+once and never revisited, so a paper first embedded from title+abstract keeps
+that embedding after a backfill unless it is explicitly redone. Re-embedding
+just the affected rows takes hours; a full pass takes about thirty.
+
+```bash
+# One-off, and only if embeddings.npz predates provenance tracking: adopt the
+# current papers.json full-text state as the record of how each row was built.
+# Run this BEFORE extending xml/, while papers.json still reflects the old
+# corpus, or it will mark rows as full-text that were never embedded that way.
+python3 precompute.py --skip-fetch --init-fulltext-flags
+
+# After extending xml/ and re-running add_fulltext.py over papers.json:
+python3 precompute.py --skip-fetch --reembed-fulltext-gained \
+  --model-dir model-v5 --adapter-path finetuned-specter2-v5/best_adapter
+```
+
+The model is unchanged by this — it is the same `model-v5` scoring better
+inputs — so there is no retraining and no new model version.
+
 **Check coverage afterwards.** `precompute.py` prints full-text coverage on
 every run and stores a `used_fulltext` flag per row in `embeddings.npz`; the
 daily refresh cannot add full text on its own, so coverage decays as new

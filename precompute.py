@@ -506,6 +506,12 @@ def main():
                         help="Only embed+score existing papers.json")
     parser.add_argument("--fetch-only", action="store_true",
                         help="Only fetch metadata (no GPU needed)")
+    parser.add_argument("--init-fulltext-flags", action="store_true",
+                        help="Record which existing embeddings used full text, "
+                             "taken from papers.json, without re-embedding")
+    parser.add_argument("--reembed-fulltext-gained", action="store_true",
+                        help="Re-embed only papers that have gained full text "
+                             "since they were last embedded")
     parser.add_argument("--allow-abstract-only", action="store_true",
                         help="Permit a full re-embed with no full text "
                              "available (see _guard_full_reembed)")
@@ -588,6 +594,26 @@ def main():
               file=sys.stderr)
         return
 
+    # Adopt the current papers.json full-text state as the provenance record
+    # for an embedding file written before provenance was tracked. Only sound
+    # when papers.json reflects the XML the embeddings were actually built
+    # from, so it is a deliberate one-off rather than automatic.
+    if getattr(args, "init_fulltext_flags", False):
+        if emb is None:
+            print("No embeddings.npz to annotate.", file=sys.stderr)
+            raise SystemExit(2)
+        flags = np.array([bool(p.get("full_text")) for p in papers[:len(emb)]],
+                         dtype=bool)
+        if len(flags) != len(emb):
+            print(f"papers.json ({len(papers)}) shorter than embeddings "
+                  f"({len(emb)}) — refusing to guess.", file=sys.stderr)
+            raise SystemExit(2)
+        np.savez_compressed(emb_path, embeddings=emb, used_fulltext=flags)
+        print(f"Recorded full-text provenance for {len(flags)} embeddings "
+              f"({int(flags.sum())} with full text, "
+              f"{flags.sum()/len(flags)*100:.1f}%)", file=sys.stderr)
+        return
+
     # ---------- Embed ----------
     # Find papers that need embedding
     if emb is not None and emb.shape[0] < len(papers):
@@ -612,6 +638,33 @@ def main():
             checkpoint_dir=output_dir / "emb_checkpoint")
     else:
         print(f"All {len(papers)} papers already embedded.", file=sys.stderr)
+
+    # ---------- Backfill: re-embed papers that have gained full text ----------
+    # Embeddings are otherwise written once and never revisited, so a paper
+    # first embedded from title+abstract keeps that embedding even after an
+    # XML backfill gives it a body. Re-embedding only the affected rows costs
+    # hours rather than the ~30 a full pass would.
+    if emb is not None and getattr(args, "reembed_fulltext_gained", False):
+        if ft_flags is None or len(ft_flags) != len(emb):
+            print("Cannot target a backfill: embeddings.npz has no "
+                  "used_fulltext array. Run --init-fulltext-flags first "
+                  "(see pipeline/README.md).", file=sys.stderr)
+            raise SystemExit(2)
+        gained = [i for i, p in enumerate(papers[:len(emb)])
+                  if p.get("full_text") and not ft_flags[i]]
+        if not gained:
+            print("No papers have gained full text since they were embedded.",
+                  file=sys.stderr)
+        else:
+            print(f"Re-embedding {len(gained)} papers that gained full text...",
+                  file=sys.stderr)
+            re_emb, re_ft = embed_papers(
+                [papers[i] for i in gained], args.adapter_path,
+                checkpoint_dir=output_dir / "reembed_checkpoint")
+            emb[gained] = re_emb
+            ft_flags[gained] = re_ft
+            print(f"  spliced {int(re_ft.sum())} full-text embeddings into "
+                  f"place", file=sys.stderr)
 
     if ft_flags is not None and len(ft_flags) == len(emb):
         n_ft = int(ft_flags.sum())
