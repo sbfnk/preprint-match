@@ -22,8 +22,8 @@ from typing import Optional, Dict, List
 HTML_ENTITIES = {
     '&ndash;': '–',
     '&mdash;': '—',
-    '&rsquor;': ''',
-    '&lsquor;': ''',
+    '&rsquor;': '\u2019',
+    '&lsquor;': '\u201a',
     '&ldquo;': '"',
     '&rdquo;': '"',
     '&prime;': '′',
@@ -185,29 +185,50 @@ def parse_jats_xml(xml_path: Path) -> Dict:
     return result
 
 
-def build_doi_index(xml_dir: Path) -> Dict[str, str]:
+# The article's own DOI is the first such element in the file, inside
+# article-meta; the only other article-ids live in the reference list at the
+# very end. So a bounded read of the header finds it without parsing the
+# whole document, which matters at half a million files.
+_DOI_RE = re.compile(
+    r'<article-id[^>]*pub-id-type="doi"[^>]*>([^<]+)</article-id>')
+_HEADER_BYTES = 65536
+
+
+def _doi_of(xml_file: Path):
+    try:
+        with open(xml_file, "r", encoding="utf-8", errors="replace") as f:
+            head = f.read(_HEADER_BYTES)
+        m = _DOI_RE.search(head)
+        if m:
+            return m.group(1).strip(), xml_file.name
+        # Header did not contain it (unusual layout) — fall back to a parse.
+        with open(xml_file, "r", encoding="utf-8") as f:
+            root = ET.fromstring(fix_html_entities(f.read()))
+        el = root.find('.//article-id[@pub-id-type="doi"]')
+        if el is not None and el.text:
+            return el.text.strip(), xml_file.name
+    except Exception:
+        pass
+    return None
+
+
+def build_doi_index(xml_dir: Path, workers: int = 8) -> Dict[str, str]:
     """Build an index mapping DOIs to XML filenames."""
-    index = {}
+    from concurrent.futures import ProcessPoolExecutor
+
     xml_files = list(xml_dir.glob("*.xml"))
     total = len(xml_files)
+    print(f"Building index for {total} files...", flush=True)
 
-    print(f"Building index for {total} files...")
+    index = {}
+    with ProcessPoolExecutor(max_workers=workers) as pool:
+        for i, got in enumerate(pool.map(_doi_of, xml_files, chunksize=256), 1):
+            if got:
+                index[got[0]] = got[1]
+            if i % 50000 == 0:
+                print(f"  {i}/{total}...", flush=True)
 
-    for i, xml_file in enumerate(xml_files):
-        if i % 5000 == 0:
-            print(f"  {i}/{total}...")
-
-        try:
-            with open(xml_file, 'r', encoding='utf-8') as f:
-                content = f.read()
-            content = fix_html_entities(content)
-            root = ET.fromstring(content)
-            doi_elem = root.find('.//article-id[@pub-id-type="doi"]')
-            if doi_elem is not None and doi_elem.text:
-                index[doi_elem.text] = xml_file.name
-        except Exception as e:
-            print(f"Error parsing {xml_file}: {e}")
-
+    print(f"  indexed {len(index)} DOIs from {total} files", flush=True)
     return index
 
 

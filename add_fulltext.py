@@ -25,6 +25,11 @@ def main():
     parser.add_argument("--xml-dir", default="xml", help="XML directory")
     parser.add_argument("--rebuild-index", action="store_true",
                         help="Force rebuild of DOI→XML index")
+    parser.add_argument("--only-missing",
+                        help="embeddings.npz whose used_fulltext array marks "
+                             "which rows already have full-text embeddings; "
+                             "text is attached only to the rest, keeping the "
+                             "output small enough to move around")
     args = parser.parse_args()
 
     output = args.output or args.input
@@ -49,12 +54,33 @@ def main():
             index = json.load(f)
         print(f"Loaded existing index: {len(index)} DOIs", file=sys.stderr)
 
+    # Restrict to rows whose embedding was built without full text. Attaching
+    # it to every matching paper instead would produce a ~10GB file, nearly
+    # all of it text for rows that already have a full-text embedding and so
+    # would not be re-embedded anyway.
+    targets = None
+    if args.only_missing:
+        import numpy as np
+        with np.load(args.only_missing) as z:
+            if "used_fulltext" not in z:
+                print(f"{args.only_missing} has no used_fulltext array; run "
+                      f"precompute.py --init-fulltext-flags first",
+                      file=sys.stderr)
+                raise SystemExit(2)
+            flags = z["used_fulltext"]
+        n = min(len(flags), len(dataset))
+        targets = {i for i in range(n) if not flags[i]}
+        print(f"Restricting to {len(targets)} rows without a full-text "
+              f"embedding", file=sys.stderr)
+
     # Match and extract full text
     matched = 0
     already_had = 0
     errors = 0
 
     for i, record in enumerate(dataset):
+        if targets is not None and i not in targets:
+            continue
         if i % 1000 == 0:
             print(f"Processing {i}/{len(dataset)} (matched {matched})...",
                   file=sys.stderr)
