@@ -134,25 +134,47 @@ region is free; S3 to anywhere else is billed per GB. Run the pull and the
 extraction on the instance, then copy out only the extracted XML.
 
 ```bash
-# On the EC2 instance
+# On the EC2 instance (Amazon Linux 2023, us-east-1 — the buckets live there,
+# and same-region transfer is free; from anywhere else you pay per GB)
 wget https://github.com/peak/s5cmd/releases/download/v2.3.0/s5cmd_2.3.0_Linux-64bit.tar.gz
 tar xzf s5cmd_2.3.0_Linux-64bit.tar.gz
+sudo dnf install -y tmux            # the pull outlives an ssh session
 
-# Scratch space (NVMe instance storage)
+# Instance-store NVMe is present but unformatted and unmounted at boot
 sudo mkfs -t xfs /dev/nvme1n1 && sudo mkdir /data
 sudo mount /dev/nvme1n1 /data && sudo chown ec2-user:ec2-user /data
 cd /data
 
-# Size the job BEFORE pulling — listing is cheap, transfer is not
-s5cmd --request-payer requester ls 's3://biorxiv-src-monthly/Current_Content/March_2026/*' | wc -l
-
-# Incremental: pull only the months you are missing, from BOTH buckets.
-# A full 'Current_Content/*' pull re-downloads years you already have.
-for m in March_2026 April_2026 May_2026 June_2026 July_2026 August_2026; do
-  s5cmd --request-payer requester cp --sp "s3://biorxiv-src-monthly/Current_Content/$m/*" .
-  s5cmd --request-payer requester cp --sp "s3://medrxiv-src-monthly/Current_Content/$m/*" .
-done
+# Size the job before transferring anything — listing is cheap, transfer is not
+~/s5cmd --request-payer requester ls 's3://medrxiv-src-monthly/Current_Content/June_2025/*' | wc -l
 ```
+
+Pull **month by month, extracting and deleting as you go**. A whole-bucket
+`Current_Content/*` pull re-downloads years you already have, and even the
+missing months together can exceed the instance store: you transfer complete
+MECA packages (PDF, figures, supplementary) and keep only the XML from each,
+so peak disk must be kept to roughly one month.
+
+```bash
+process_meca() {
+    meca="$1"; id=$(basename "$meca" .meca)
+    mkdir -p "xml/$id" 2>/dev/null
+    unzip -qq -j "$meca" "content/*.xml" -d "xml/$id" < /dev/null 2>/dev/null
+}
+export -f process_meca
+
+pull_month() {           # pull_month <bucket> <Month_Year>
+    ~/s5cmd --request-payer requester cp --sp "s3://$1/Current_Content/$2/*" .
+    find . -maxdepth 1 -name '*.meca' | xargs -P 8 -I{} bash -c 'process_meca "$@"' _ {}
+    find . -maxdepth 1 -name '*.meca' -delete    # extracted; reclaim the space
+    echo "$1 $2 done: $(ls xml | wc -l) dirs so far"
+}
+```
+
+Which months you need depends on where each pull last ran — the two servers
+drift independently, and have done. Check current coverage per server per
+month against `doi_to_xml.json` before choosing; as of 2026-09-01 the medRxiv
+pull had last run in **May 2025** and bioRxiv in **February 2026**.
 
 Extract the XML out of the archives and flatten the directory structure:
 
