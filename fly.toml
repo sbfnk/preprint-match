@@ -25,6 +25,10 @@ primary_region = 'lhr'
   ANALYTICS_DB = "/data/analytics.db"
 
 [[vm]]
-  memory = '3gb'
+  # Measured heap is ~1.47GB (2026-09-01), leaving ~480MB headroom.
+  # 3GB was needed while the app sorted the probability matrix at boot,
+  # which peaked ~600MB above steady state; percentile ranking now reads
+  # precomputed quantile thresholds, so boot peak tracks steady state.
+  memory = '2gb'
   cpu_kind = 'shared'
   cpus = 2
