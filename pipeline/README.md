@@ -280,6 +280,30 @@ rsync -av hpclogin:~/medrxiv/model-v2/ /Volumes/code/medrxiv/model-v2/
 rsync -av hpclogin:~/medrxiv/predictions/ /Volumes/code/medrxiv/predictions/
 ```
 
+#### Full-text coverage
+
+Full text reaches the pipeline only through a bulk XML backfill
+(`add_fulltext.py` against the local `xml/` corpus). Preprints fetched from
+the medRxiv API carry title and abstract only, and `papers.json` does not
+retain the text, so every paper added by the daily refresh is embedded from
+title+abstract. That is worth about -0.7pp acc@1 and -2pp acc@10 relative to
+full text (see RESULTS.md, Experiment 1).
+
+`embeddings.npz` therefore carries a `used_fulltext` boolean array alongside
+the vectors, recording how each row was built, and precompute prints coverage
+on every run. Files written before this existed have no such array and are
+reported as unknown.
+
+Two consequences worth knowing:
+
+* Deleting `embeddings.npz` and re-embedding (the `full_reembed` workflow
+  input) rebuilds everything from whatever `papers.json` holds — which is
+  abstract-only. `_guard_full_reembed` refuses this and explains why; pass
+  `--allow-abstract-only` if it is genuinely what you want.
+* Restoring coverage means a bulk S3 MECA pull (requester-pays, run from EC2)
+  and re-embedding the affected papers. Europe PMC is not an alternative: it
+  indexes essentially all these preprints but holds full text for only ~6%.
+
 #### "Similar papers" evidence
 
 `precompute.py` also writes `neighbours.npz` + `neighbour_dois.json`, which

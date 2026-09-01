@@ -304,6 +304,13 @@ def embed_papers(papers, adapter_path="finetuned-specter2/best_adapter",
         "full_text": p.get("full_text", ""),
     } for p in papers]
 
+    # Track which papers were embedded from full text. Preprints fetched from
+    # the API carry title and abstract only, so an embedding built from them
+    # sits on a different distribution from the full-text ones the model was
+    # trained on. Without recording it at this point the distinction is
+    # unrecoverable later: papers.json does not keep full_text.
+    used_fulltext = np.array([bool(r["full_text"]) for r in records], dtype=bool)
+
     start_idx = 0
     existing = None
     if checkpoint_dir is not None:
@@ -314,10 +321,11 @@ def embed_papers(papers, adapter_path="finetuned-specter2/best_adapter",
             existing, start_idx = ckpt
             print(f"Resuming embedding from record {start_idx}", file=sys.stderr)
 
-    return generate_fulltext_embeddings(
+    embeddings = generate_fulltext_embeddings(
         records, tokenizer, model, device, batch_size=32, stride=256,
         checkpoint_dir=checkpoint_dir, checkpoint_every=1000,
         start_idx=start_idx, existing_embeddings=existing)
+    return embeddings, used_fulltext
 
 
 # Neighbour evidence: how many top journals get evidence, and how many
@@ -453,6 +461,32 @@ def save_neighbours(output_dir, neighbours, train_dois):
           file=sys.stderr)
 
 
+def _guard_full_reembed(papers, output_dir, args):
+    """Refuse a re-embed that would silently drop full-text coverage.
+
+    Full text reaches the pipeline only through a bulk XML backfill; papers
+    fetched from the API carry title and abstract only, and papers.json does
+    not keep the text. So deleting embeddings.npz and rebuilding from the
+    current papers.json converts the whole corpus to abstract-only, which is
+    worth about -0.7pp acc@1 and -2pp acc@10 (RESULTS.md) and is invisible
+    once done. Fail loudly instead, unless the caller says they mean it.
+    """
+    prev = output_dir / "embeddings.npz"
+    if prev.exists():
+        return
+    with_text = sum(1 for p in papers if p.get("full_text"))
+    if with_text or getattr(args, "allow_abstract_only", False):
+        return
+    print(
+        "\nREFUSING to embed: no paper in papers.json carries full_text, so\n"
+        "this would rebuild the whole corpus from title+abstract only and\n"
+        "quietly discard the full-text signal.\n\n"
+        "Run the XML backfill first (see pipeline/README.md), or pass\n"
+        "--allow-abstract-only if abstract-only embeddings are intended.\n",
+        file=sys.stderr)
+    raise SystemExit(2)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Precompute full probability matrix for all journals")
@@ -472,6 +506,9 @@ def main():
                         help="Only embed+score existing papers.json")
     parser.add_argument("--fetch-only", action="store_true",
                         help="Only fetch metadata (no GPU needed)")
+    parser.add_argument("--allow-abstract-only", action="store_true",
+                        help="Permit a full re-embed with no full text "
+                             "available (see _guard_full_reembed)")
     parser.add_argument("--no-neighbours", action="store_true",
                         help="Skip the 'similar papers' evidence artifact")
     parser.add_argument("--web-artifacts-only", action="store_true",
@@ -504,8 +541,13 @@ def main():
 
     # Load embeddings if available
     emb = None
+    ft_flags = None
     if emb_path.exists() and not args.fetch_only:
-        emb = np.load(emb_path)["embeddings"]
+        _e = np.load(emb_path)
+        emb = _e["embeddings"]
+        # Older embedding files predate provenance tracking; treat them as
+        # unknown rather than asserting they were abstract-only.
+        ft_flags = _e["used_fulltext"] if "used_fulltext" in _e else None
 
     # ---------- Fetch ----------
     if not args.skip_fetch:
@@ -553,22 +595,38 @@ def main():
         papers_to_embed = papers[n_existing:]
         print(f"Embedding {len(papers_to_embed)} new papers "
               f"({n_existing} already embedded)...", file=sys.stderr)
-        new_emb = embed_papers(papers_to_embed, args.adapter_path,
-                               checkpoint_dir=output_dir / "emb_checkpoint")
+        new_emb, new_ft = embed_papers(
+            papers_to_embed, args.adapter_path,
+            checkpoint_dir=output_dir / "emb_checkpoint")
         emb = np.concatenate([emb, new_emb], axis=0)
+        if ft_flags is not None and len(ft_flags) == n_existing:
+            ft_flags = np.concatenate([ft_flags, new_ft])
+        else:
+            ft_flags = np.concatenate(
+                [np.zeros(n_existing, dtype=bool), new_ft])
     elif emb is None:
+        _guard_full_reembed(papers, output_dir, args)
         print(f"Embedding all {len(papers)} papers...", file=sys.stderr)
-        emb = embed_papers(papers, args.adapter_path,
-                           checkpoint_dir=output_dir / "emb_checkpoint")
+        emb, ft_flags = embed_papers(
+            papers, args.adapter_path,
+            checkpoint_dir=output_dir / "emb_checkpoint")
     else:
         print(f"All {len(papers)} papers already embedded.", file=sys.stderr)
+
+    if ft_flags is not None and len(ft_flags) == len(emb):
+        n_ft = int(ft_flags.sum())
+        print(f"Full-text coverage: {n_ft}/{len(ft_flags)} embeddings "
+              f"({n_ft / len(ft_flags) * 100:.1f}%)", file=sys.stderr)
 
     if emb is None or len(papers) == 0:
         print("No papers to score.", file=sys.stderr)
         return
 
-    # Save embeddings
-    np.savez_compressed(emb_path, embeddings=emb)
+    # Save embeddings, with the full-text provenance alongside them
+    if ft_flags is not None and len(ft_flags) == len(emb):
+        np.savez_compressed(emb_path, embeddings=emb, used_fulltext=ft_flags)
+    else:
+        np.savez_compressed(emb_path, embeddings=emb)
 
     # ---------- Score ----------
     from predict_journal import JournalPredictor

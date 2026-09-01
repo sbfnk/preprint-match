@@ -343,7 +343,7 @@ def main():
 
     # Embed
     print(f"\nEmbedding {len(papers_to_embed)} papers...", file=sys.stderr)
-    embeddings = embed_papers(papers_to_embed, args.adapter_path)
+    embeddings, _used_fulltext = embed_papers(papers_to_embed, args.adapter_path)
 
     # Score against saved model
     print("\nScoring against saved model...", file=sys.stderr)
