@@ -509,6 +509,9 @@ def main():
     parser.add_argument("--init-fulltext-flags", action="store_true",
                         help="Record which existing embeddings used full text, "
                              "taken from papers.json, without re-embedding")
+    parser.add_argument("--embed-only", action="store_true",
+                        help="Stop after writing embeddings; leave scoring to "
+                             "the refresh")
     parser.add_argument("--fulltext-index",
                         help="With --init-fulltext-flags, derive provenance "
                              "from this doi->xml index (snapshot it before a "
@@ -691,6 +694,18 @@ def main():
 
     if emb is None or len(papers) == 0:
         print("No papers to score.", file=sys.stderr)
+        return
+
+    if getattr(args, "embed_only", False):
+        # Used for a GPU backfill: the embeddings are the expensive part and
+        # the only thing that needs this machine. Scoring happens in the
+        # regular refresh, which would redo it anyway.
+        if ft_flags is not None and len(ft_flags) == len(emb):
+            np.savez_compressed(emb_path, embeddings=emb, used_fulltext=ft_flags)
+        else:
+            np.savez_compressed(emb_path, embeddings=emb)
+        print(f"Embed-only: wrote {emb_path} ({emb.shape}); skipping scoring.",
+              file=sys.stderr)
         return
 
     # Save embeddings, with the full-text provenance alongside them
