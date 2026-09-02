@@ -649,8 +649,14 @@ def main():
         if ft_flags is not None and len(ft_flags) == n_existing:
             ft_flags = np.concatenate([ft_flags, new_ft])
         else:
-            ft_flags = np.concatenate(
-                [np.zeros(n_existing, dtype=bool), new_ft])
+            # No record of how the existing rows were built. Inventing False
+            # would assert they are abstract-only, which is usually wrong and
+            # overwrites the real answer once it is written back. Leave the
+            # provenance unknown instead; --init-fulltext-flags restores it.
+            ft_flags = None
+            print("No used_fulltext array for the existing embeddings — "
+                  "leaving provenance unrecorded rather than guessing. "
+                  "Run --init-fulltext-flags to restore it.", file=sys.stderr)
     elif emb is None:
         _guard_full_reembed(papers, output_dir, args)
         print(f"Embedding all {len(papers)} papers...", file=sys.stderr)
