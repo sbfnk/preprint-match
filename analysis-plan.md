@@ -23,9 +23,20 @@ prestige and chance operate, and its size is worth knowing. Either way the measu
 peer review workload, on desk rejection, on cascade routing between journals, and on how much
 information a journal name conveys about a paper beyond what the paper says itself.
 
-Nobody has measured this across a large journal space. Existing journal recommenders are built and
-sold by individual publishers, cover only that publisher's own titles, and report neither calibrated
-uncertainty nor what the model is responding to.
+Journal recommenders are not new. Entrup et al. survey twenty available systems, roughly a third of
+them publisher-scoped and the rest covering a field or all journals, several of which already show
+the user which similar articles produced a recommendation.[^entrup] What those systems compute is a
+similarity score: BM25 averaged over matching articles for Elsevier's, summed and normalised Lucene
+similarity for JANE. None reports a probability that a given journal will publish the paper, and the
+same survey concludes that providers' lack of transparency about their methods means the results
+cannot easily be interpreted.
+
+So the gap is not recommendation itself. It is that nobody has published a calibrated, evaluated
+measurement of how predictable placement is across a large journal space, or of what a model is
+responding to when it predicts.
+
+[^entrup]: Entrup, Ewerth and Hoppe, A Comparison of Automated Journal Recommender Systems, TIB
+    Leibniz Information Centre for Science and Technology, 2023.
 
 ## Methods
 
