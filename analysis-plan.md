@@ -1,112 +1,100 @@
 <!-- Title to be decided. -->
 
+Outline at one sentence per paragraph, per the lab manual.
+
 ## Research questions
 
-1. How predictable is journal placement from manuscript content alone, across a large journal space?
-2. Which parts of a manuscript does the model use: title, abstract, body text, section headings,
-   author list, reference list?
+1. How predictable is the journal a preprint ends up in, from the manuscript alone, across a large
+   journal space?
+2. Which parts of a manuscript does the prediction depend on: title, abstract, body text, section
+   headings, author list, reference list?
 3. Is placement predicted by the science or by its presentation and provenance?
 
 ## Background
 
-Journals are filters. They take a stream of research and select what fits their scope, standards and
-audience. The filtering is slow and opaque: a manuscript is submitted, rejected, reformatted and
-resubmitted, often several times, and each round consumes reviewer time to answer much the same
-question of whether the paper belongs here. Preprints removed the delay in sharing but not the delay
-in sorting, so work now appears immediately and then still spends months finding a venue.
-
-How much of that sorting is settled by the manuscript itself is not known. If placement is largely
-predictable from content, the submission cascade is an expensive way to rediscover something already
-determined when the paper was written, and both authors and editors could be told the answer up
-front. If it is not predictable, the unexplained part is where editorial judgment, author ambition,
-prestige and chance operate, and its size is worth knowing. Either way the measurement bears on
-peer review workload, on desk rejection, on cascade routing between journals, and on how much
-information a journal name conveys about a paper beyond what the paper says itself.
-
-Journal recommenders are not new. Entrup et al. survey twenty available systems, roughly a third of
-them publisher-scoped and the rest covering a field or all journals, several of which already show
-the user which similar articles produced a recommendation.[^entrup] What those systems compute is a
-similarity score: BM25 averaged over matching articles for Elsevier's, summed and normalised Lucene
-similarity for JANE. None reports a probability that a given journal will publish the paper, and the
-same survey concludes that providers' lack of transparency about their methods means the results
-cannot easily be interpreted.
-
-So the gap is not recommendation itself. It is that nobody has published a calibrated, evaluated
-measurement of how predictable placement is across a large journal space, or of what a model is
-responding to when it predicts.
-
-[^entrup]: Entrup, Ewerth and Hoppe, A Comparison of Automated Journal Recommender Systems, TIB
-    Leibniz Information Centre for Science and Technology, 2023.
+1. Journals filter research by scope, standards and audience, and the filtering is slow: a
+   manuscript is submitted, rejected, reformatted and resubmitted, often several times, each round
+   spending reviewer time on the same question of whether the paper belongs here.
+2. Preprints removed the delay in sharing but not the delay in sorting, so work now appears
+   immediately and then still spends months finding a venue.
+3. Journal recommenders are widely available, with around twenty services covering anything from a
+   single publisher's titles to all of PubMed, but they return similarity scores rather than
+   probabilities and are not evaluated against where papers actually went.[^entrup]
+4. Nicholson and colleagues come closest to the question we ask, predicting journals for bioRxiv
+   preprints from real preprint-publication pairs, but as a secondary demonstration within a study
+   of linguistic change, reporting only that two classifiers beat a random baseline and stating
+   neither accuracy nor the size of the candidate set.[^nicholson]
+5. So how predictable placement actually is remains unmeasured, and what such a model responds to
+   has not been asked at all.
+6. The answer matters in both directions: if placement is largely fixed by the manuscript, the
+   submission cascade is an expensive way to rediscover something already settled, and if it is not,
+   the unexplained part is where editorial judgment, author ambition and prestige act, and its size
+   is worth knowing.
+7. Either way the measurement bears on reviewer workload, desk rejection, cascade routing between
+   journals, and how much a journal name conveys about a paper beyond what the paper says itself.
 
 ## Methods
 
 ### Data
 
-Preprints and their metadata come from the medRxiv and bioRxiv APIs. Publication destinations come
-from the same APIs' published-DOI field, with journal names resolved through Crossref. Full text
-comes from the Cold Spring Harbor MECA archives as JATS XML, parsed to title, abstract and body
-sections.
-
-The labelled set is 186,824 preprints posted since June 2019 that were later published, spanning
-7,203 journals. Analysis is restricted to the 1,484 journals with at least ten training papers,
-since below that the model cannot learn a journal at all. Full text is available for 95.8% of the
-corpus after a backfill on 2026-09-02. We use a stratified 70/10/20 train/validation/test split with
-seed 42, grouping by journal so that every journal with two or more papers appears in both training
-and test.
+1. Preprints and their metadata come from the medRxiv and bioRxiv APIs, publication destinations
+   from the same APIs' published-DOI field with journal names resolved through Crossref, and full
+   text from the Cold Spring Harbor MECA archives as JATS XML.
+2. The labelled set is 186,824 preprints posted since June 2019 that were later published, of which
+   95.8% have full text, restricted for analysis to the 1,484 journals with at least ten training
+   papers.
+3. We split 70/10/20 into training, validation and test, stratified by journal with seed 42, so that
+   every journal with two or more papers appears in both training and test.
 
 ### Model
 
-Papers are embedded with SPECTER2, a scientific document encoder pre-trained on citation graphs,
-whose proximity adapter we fine-tune contrastively so that papers published in the same journal sit
-closer together. Batches are grouped by preprint category so the negatives are topically similar.
-The text given to the encoder is `title [SEP] abstract [SEP] body`, chunked at 512 tokens with
-overlap and mean-pooled.
-
-Predictions combine a k-nearest-neighbour lookup over training embeddings with a multinomial logistic
-regression on the same embeddings plus a category feature, interpolated at alpha 0.1, then calibrated
-by temperature scaling and isotonic regression. On the held-out test set of 33,031 papers this gives
-21.7% acc@1 and 65.5% acc@10.
+4. Papers are embedded with SPECTER2, a document encoder pre-trained on citation graphs, whose
+   proximity adapter we fine-tune contrastively so that papers published in the same journal sit
+   closer together, reading title, abstract and body in 512-token chunks that are mean-pooled.
+5. Predictions interpolate a k-nearest-neighbour lookup with a multinomial logistic regression and
+   are calibrated by temperature scaling and isotonic regression, reaching 21.7% acc@1 and 65.5%
+   acc@10 on the 33,031 held-out papers.
 
 ### Experiments
 
-Two kinds of intervention on the fitted model.
+6. Removals ask what the prediction loses without a component: body text, section headings,
+   abstract, title, and body truncated to *n* chunks.
+7. Additions ask whether a component helps that the model has never seen, namely the author list and
+   the reference list, neither of which currently reaches it.
+8. Every condition re-embeds the same 1,500 held-out papers and scores them through the fitted
+   model, with acc@1, acc@10 and MRR as primary outcomes and top-1 agreement, top-5 overlap, rank
+   shift of the true journal and cosine between probability vectors as secondary ones.
+9. Four such ablations already exist and were run before this plan, so they are reported as
+   exploratory: headings cost 0.5pp acc@1, cited journals added to the classifier gain 0.2pp,
+   removing body text costs 7.7pp acc@1 and 9.3pp acc@10, and a TF-IDF proxy misestimated the first
+   two by 3x and 10x.
+10. These are inference-time interventions on an adapter fine-tuned for one input shape, so a
+    removal mixes lost signal with distribution shift and every result is a bound rather than an
+    estimate, which is why we fine-tune dedicated adapters for the two conditions where the
+    distinction changes the interpretation, body text and authors.
+11. We state in advance that if author identity predicts venue substantially once the model is
+    retrained to use it, we read that as evidence about networks and prestige rather than content,
+    and report it either way, a null result included.
 
-Removals ask what the model loses without something: body text, section headings, abstract, title,
-and body truncated to *n* chunks.
+## Results
 
-Additions ask whether something helps that the model has never seen: the author list and the
-reference list. Neither reaches it today, because the encoder reads only `<body>` and the references
-sit in `<back>`.
-
-Each condition re-embeds the same 1,500 held-out papers and scores them through the fitted model.
-Primary outcomes are acc@1, acc@10 and MRR. Secondary outcomes are top-1 agreement, top-5 overlap,
-mean rank shift of the true journal, and cosine between the probability vectors.
-
-Four such ablations already exist. We ran them without a plan, so they are exploratory and will be
-reported that way. Removing section headings costs 0.5pp acc@1. Adding cited journals to the
-classifier gains 0.2pp. Removing body text costs 7.7pp acc@1 and 9.3pp acc@10. A TF-IDF proxy
-misestimated the first two by 3x and 10x, which is why every experiment here runs against the fitted
-model rather than a stand-in.
-
-**Known confound.** These are inference-time interventions on an adapter fine-tuned for one input
-shape. A removal mixes lost signal with distribution shift, and an addition supplies text the model
-never trained on. The body-text result shows how large that mixture can be: it came out eleven times
-the estimate made before fine-tuning. We therefore treat every inference result as a bound. For the
-two conditions where the distinction changes the interpretation, body text and authors, we fine-tune
-a dedicated adapter and measure again, at roughly 40 GPU-hours each.
-
-**Pre-specified interpretation.** Authors is the condition with an external claim attached. If author
-identity predicts venue substantially once the model is retrained to use it, that is evidence about
-networks and prestige rather than about content, and we report it either way. A null result is
-equally publishable.
-
-## Results sketch
-
-One table. Conditions as rows, acc@1 / acc@10 / MRR / top-1 agreement as columns, ordered by effect
-size. From what we already know, body text should dominate, headings sit near zero, and references
-near zero. Authors is unknown, and it is the one we most want to see.
+1. Table 1 lists every condition as a row with acc@1, acc@10, MRR and top-1 agreement as columns,
+   ordered by effect size.
+2. Figure 1 sketches the same as a forest-style plot of change in acc@10 against the unmodified
+   model, with zero marked, so the ordering and the size of each effect read at a glance.
+3. Figure 2 sketches predicted against observed placement frequency by journal, showing whether the
+   calibrated probabilities hold across the range rather than only on average.
+4. From what we already know, body text should dominate, headings and references should sit near
+   zero, and authors are unknown.
 
 ## Timeline
 
-The matrix on the fitted model is about 2 GPU-hours, so within a week. The two retrained conditions
-are about 80 GPU-hours, so two to three weeks. Write-up after that.
+1. The matrix on the fitted model is roughly 2 GPU-hours and should run within a week.
+2. The two retrained conditions are roughly 80 GPU-hours across two to three weeks.
+3. Drafting follows from this outline, with paragraphs assigned once the outline is agreed.
+
+[^entrup]: Entrup, Ewerth and Hoppe, A Comparison of Automated Journal Recommender Systems, TIB
+    Leibniz Information Centre for Science and Technology, 2023.
+
+[^nicholson]: Nicholson et al., Examining linguistic shifts between preprints and publications, PLOS
+    Biology, 2022.
