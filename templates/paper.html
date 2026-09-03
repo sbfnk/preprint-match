@@ -166,7 +166,7 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
                 </svg>
                 {% else %}
-                <span class="text-sm font-bold
+                <span class="text-xs font-semibold tabular-nums
                     {% if loop.index <= 3 %}text-brand-600 dark:text-brand-400{% else %}text-surface-400 dark:text-surface-400{% endif %}">
                     {{ pred.rank }}
                 </span>
@@ -175,7 +175,7 @@
 
             <!-- Journal name -->
             <div class="flex-1 min-w-0">
-                <div class="font-medium {% if pred.is_true %}text-green-700 dark:text-green-300{% else %}text-surface-800 dark:text-surface-100{% endif %} group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors">
+                <div class="text-base font-semibold {% if pred.is_true %}text-green-700 dark:text-green-300{% else %}text-surface-900 dark:text-white{% endif %} group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors">
                     {{ pred.journal }}{% if pred.is_true %} <span class="text-xs font-normal text-green-600 dark:text-green-400">· published here</span>{% endif %}
                 </div>
                 <div class="text-xs text-surface-500 dark:text-surface-400 flex items-center gap-1.5">
@@ -193,8 +193,8 @@
 
             <!-- Match metrics -->
             <div class="flex items-center gap-3 flex-shrink-0 w-full sm:w-72 pl-12 sm:pl-0">
-                <span class="text-xs text-surface-400 dark:text-surface-400 w-16 text-right cursor-help
-                    {% if pred.percentile >= 99 %}font-semibold text-brand-500 dark:text-brand-300{% elif pred.percentile >= 95 %}font-semibold text-brand-600 dark:text-brand-400{% endif %}"
+                <span class="font-mono text-[11.5px] tabular-nums text-surface-400 dark:text-surface-400 w-16 text-right cursor-help
+                    {% if pred.percentile >= 99 %}font-medium text-brand-500 dark:text-brand-300{% elif pred.percentile >= 95 %}font-medium text-brand-600 dark:text-brand-400{% endif %}"
                     title="This paper fits {{ pred.journal }} better than {{ pred.percentile | round(1) }}% of all preprints{% if pred.lift and pred.lift >= 1.5 %} ({{ pred.lift | lift_label }}){% endif %}">
                     {{ pred.percentile | top_pct }}
                 </span>
@@ -204,7 +204,7 @@
                          style="width: {{ ((pred.probability / predictions[0].probability * 100) if predictions[0].probability else 0) | round(1) }}%">
                     </div>
                 </div>
-                <span class="text-xs w-14 text-right cursor-help text-surface-400 dark:text-surface-400"
+                <span class="text-base font-semibold tabular-nums w-14 text-right cursor-help text-surface-900 dark:text-white"
                     title="Probability that this paper's best-matching journal is {{ pred.journal }}">
                     {{ pred.probability | pct }}
                 </span>
