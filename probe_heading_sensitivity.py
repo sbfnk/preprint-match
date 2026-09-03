@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Does the deployed model actually lean on section headings?
+"""What does the deployed model actually read? Two ablations, same design.
+
+``--variant headings`` deletes every section heading. ``--variant abstract``
+drops the body entirely, leaving title and abstract, which is what the daily
+refresh feeds papers it has no XML for.
 
 The scope-versus-format probe works on TF-IDF proxies, not on the model that
 is served. This measures the real thing: embed the same papers twice with the
@@ -45,6 +49,16 @@ HEADING_LINE = re.compile(r"^## .*$", re.MULTILINE)
 def strip_headings(text):
     """Remove section-heading lines, leaving the paragraphs intact."""
     return re.sub(r"\n{3,}", "\n\n", HEADING_LINE.sub("", text or "")).strip()
+
+
+def drop_body(text):
+    """Discard the body, leaving title and abstract to carry the paper.
+
+    This is what the pipeline feeds any paper it has no XML for, so the
+    comparison measures what the full-text backfill is worth to the model
+    that is actually served.
+    """
+    return ""
 
 
 def build_sample(args):
@@ -146,8 +160,12 @@ def run(args):
         records = records[:args.limit]
     print(f"{len(records)} papers", file=sys.stderr)
 
+    variant = getattr(args, "variant", "headings")
+    transform = {"headings": strip_headings, "abstract": drop_body}[variant]
     for r in records:
-        r["stripped"] = strip_headings(r["full_text"])
+        r["stripped"] = transform(r["full_text"])
+    label = {"headings": "headings stripped",
+             "abstract": "title + abstract only"}[variant]
 
     predictor = JournalPredictor.load(args.model_dir, args.dataset)
     classes = np.array(predictor.restricted_classes)
@@ -155,7 +173,7 @@ def run(args):
 
     print("\n=== with headings ===", file=sys.stderr)
     p_with = score(predictor, records, "full_text", args.adapter_path)
-    print("\n=== headings stripped ===", file=sys.stderr)
+    print(f"\n=== {label} ===", file=sys.stderr)
     p_without = score(predictor, records, "stripped", args.adapter_path)
 
     m_with = metrics(p_with, truth, classes)
@@ -173,6 +191,7 @@ def run(args):
         np.linalg.norm(p_with, axis=1) * np.linalg.norm(p_without, axis=1))))
 
     out = {
+        "variant": variant,
         "n_papers": len(records),
         "with_headings": {k: m_with[k] for k in ("acc1", "acc10", "mrr")},
         "without_headings": {k: m_without[k] for k in ("acc1", "acc10", "mrr")},
@@ -183,8 +202,8 @@ def run(args):
     }
 
     print("\n" + "=" * 62, file=sys.stderr)
-    for label, m in (("with headings", m_with), ("stripped", m_without)):
-        print(f"  {label:16s} acc@1={m['acc1']*100:5.1f}%  "
+    for lbl, m in (("full text", m_with), (label, m_without)):
+        print(f"  {lbl:22s} acc@1={m['acc1']*100:5.1f}%  "
               f"acc@10={m['acc10']*100:5.1f}%  MRR={m['mrr']:.3f}",
               file=sys.stderr)
     d1 = (m_without["acc1"] - m_with["acc1"]) * 100
@@ -207,6 +226,9 @@ def run(args):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--variant", choices=("headings", "abstract"),
+                    default="headings",
+                    help="what to remove: section headings, or the whole body")
     ap.add_argument("--build-sample", action="store_true")
     ap.add_argument("--run", action="store_true")
     ap.add_argument("--metadata",
