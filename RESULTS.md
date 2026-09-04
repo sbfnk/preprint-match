@@ -389,6 +389,65 @@ leans on needs the direct measurement.
 
 ---
 
+## Experiment 5d: What Is Full Text Worth to the Deployed Model?
+
+Experiment 1 measured full text against title+abstract on the *un-fine-tuned*
+SPECTER2 with a plain kNN, and found +0.7pp acc@1 / +2pp acc@10. That number
+was quoted for years, including to justify a full-text backfill. It is badly
+wrong for the model actually served.
+
+### Method
+
+Same design as 5b, run with `probe_heading_sensitivity.py --variant abstract`:
+1,500 held-out papers embedded twice with the fine-tuned adapter, once with
+the body and once with title+abstract only, both scored through `model-v5`.
+
+### Results
+
+| | acc@1 | acc@10 | MRR |
+|---|---|---|---|
+| full text | 22.3% | 68.9% | 0.368 |
+| title + abstract only | 14.5% | 59.5% | 0.284 |
+| delta | **-7.7pp** | **-9.3pp** | -0.084 |
+
+Top-1 prediction unchanged for only 35.6% of papers, top-5 overlap 53.3%,
+mean cosine between the probability vectors 0.71, mean absolute rank shift of
+the true journal 33.5.
+
+### Discussion
+
+**Eleven times the effect Experiment 1 implied.** The explanation is the
+fine-tuning: the adapter was trained contrastively on full-text
+representations, so its learned geometry assumes a full document. Experiment 1
+measured a base model with no such expectation. Fine-tuning did not merely
+improve the embeddings, it made them dependent on the input they were tuned
+for.
+
+**This is the largest single effect measured anywhere in these experiments**,
+and it dwarfs everything the scope-versus-format work turned up. All three on
+acc@10: headings +0.2pp (5b), cited journals +0.5pp (5c), full text
+**-9.3pp**.
+
+**Caveat, and it cuts the same way as 5b.** Stripping the body at inference
+puts the input off-distribution, so this conflates "full text carries signal"
+with "the adapter expects a full document". A model *trained* on abstracts
+alone would score better than 14.5%. As an estimate of what full text
+contributes in principle, -7.7pp is an upper bound.
+
+**But for the deployed system it is not an upper bound, it is the actual
+cost.** Papers with no full text were being scored by exactly this
+adapter, off exactly this distribution. Before the 2026-09-02 backfill that
+was 23.3% of the live corpus, concentrated on the newest papers. Those papers
+were scoring 9.3pp worse on acc@10 than the same papers with their body text,
+and nothing surfaced it. Against the 65.5% headline the shortfall is smaller,
+around 6pp, because the headline test set already contains abstract-only papers
+and is depressed by them.
+
+**Consequence for scoring pasted abstracts (#15).** A submission with no body
+gets this penalty. Any such feature has to say so.
+
+---
+
 ## Experiment 5c: Do Cited Journals Help the Real Classifier?
 
 Experiment 5 found that cited journals alone predict the destination about as
@@ -476,4 +535,4 @@ The best method achieved 20.0% acc@1, 61.4% acc@10, and 0.332 MRR on the 316 jou
 
 </details>
 
-What mattered most, roughly in order: restricting to journals with ≥10 training papers (largest single effect), tuning classifier regularisation (C=10 vs C=1), hard negative fine-tuning, full text (vs title+abstract only). Calibration needed almost no correction.
+What mattered most, roughly in order: restricting to journals with ≥10 training papers (largest single effect), tuning classifier regularisation (C=10 vs C=1), hard negative fine-tuning, full text (vs title+abstract only). Calibration needed almost no correction. (Full text ranks last here on the pre-fine-tuning measurement; Experiment 5d puts it first for the deployed model.)
