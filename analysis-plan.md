@@ -65,8 +65,9 @@ Outline at one sentence per paragraph, per the lab manual.
    with acc@1, acc@10 and MRR as primary outcomes and top-1 agreement, top-5 overlap, rank shift of
    the true journal and cosine between probability vectors as secondary ones.
 9. Four such ablations already exist and were run before this plan, so we report them as exploratory:
-   headings cost 0.5pp acc@1, cited journals added to the classifier gain 0.2pp, removing body text
-   costs 7.7pp acc@1 and 9.3pp acc@10, and a TF-IDF proxy misestimated the first two by 3x and 10x.
+   headings cost 0.5pp acc@1, cited journals added to the classifier gain 0.5pp acc@10, removing body
+   text costs 7.7pp acc@1 and 9.3pp acc@10, and a TF-IDF proxy overstated the first two threefold and
+   tenfold on those same metrics.
 10. These are inference-time interventions on an adapter fine-tuned for one input shape, so a removal
     mixes lost signal with distribution shift and every result is a bound rather than an estimate,
     which is why we fine-tune dedicated adapters for the two conditions where the distinction changes
