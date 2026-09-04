@@ -246,12 +246,16 @@ def main():
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--output", default=None,
-                    help="default depends on --variant, so that one "
-                         "experiment cannot overwrite another's results")
+                    help="default depends on --variant and on whether this "
+                         "is a build or a run, so that neither can overwrite "
+                         "the other's output")
     args = ap.parse_args()
     if args.output is None:
-        args.output = {"headings": "results/heading_sensitivity.json",
-                       "abstract": "results/fulltext_ablation.json"}[args.variant]
+        # --build-sample writes the sample itself, so it defaults to where
+        # --run will read it from, never to a results path.
+        args.output = args.input if args.build_sample else {
+            "headings": "results/heading_sensitivity.json",
+            "abstract": "results/fulltext_ablation.json"}[args.variant]
 
     if args.build_sample:
         build_sample(args)
