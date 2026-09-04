@@ -438,8 +438,10 @@ contributes in principle, -7.7pp is an upper bound.
 cost.** Papers with no full text were being scored by exactly this
 adapter, off exactly this distribution. Before the 2026-09-02 backfill that
 was 23.3% of the live corpus, concentrated on the newest papers. Those papers
-were getting predictions roughly 9pp worse on acc@10 than the headline
-evaluation implies, and nothing surfaced it.
+were scoring 9.3pp worse on acc@10 than the same papers with their body text,
+and nothing surfaced it. Against the 65.5% headline the shortfall is smaller,
+around 6pp, because the headline test set already contains abstract-only papers
+and is depressed by them.
 
 **Consequence for scoring pasted abstracts (#15).** A submission with no body
 gets this penalty. Any such feature has to say so.
