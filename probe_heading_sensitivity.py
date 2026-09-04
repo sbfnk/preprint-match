@@ -166,12 +166,14 @@ def run(args):
         r["stripped"] = transform(r["full_text"])
     label = {"headings": "headings stripped",
              "abstract": "title + abstract only"}[variant]
+    baseline_label = {"headings": "with headings",
+                      "abstract": "full text"}[variant]
 
     predictor = JournalPredictor.load(args.model_dir, args.dataset)
     classes = np.array(predictor.restricted_classes)
     truth = np.array([r["journal"] for r in records])
 
-    print("\n=== with headings ===", file=sys.stderr)
+    print(f"\n=== {baseline_label} ===", file=sys.stderr)
     p_with = score(predictor, records, "full_text", args.adapter_path)
     print(f"\n=== {label} ===", file=sys.stderr)
     p_without = score(predictor, records, "stripped", args.adapter_path)
@@ -193,8 +195,8 @@ def run(args):
     out = {
         "variant": variant,
         "n_papers": len(records),
-        "with_headings": {k: m_with[k] for k in ("acc1", "acc10", "mrr")},
-        "without_headings": {k: m_without[k] for k in ("acc1", "acc10", "mrr")},
+        "baseline": {k: m_with[k] for k in ("acc1", "acc10", "mrr")},
+        "ablated": {k: m_without[k] for k in ("acc1", "acc10", "mrr")},
         "top1_unchanged": top1_same,
         "top5_overlap": top5_overlap,
         "mean_abs_rank_shift_of_true_journal": rank_shift,
@@ -202,7 +204,7 @@ def run(args):
     }
 
     print("\n" + "=" * 62, file=sys.stderr)
-    for lbl, m in (("full text", m_with), (label, m_without)):
+    for lbl, m in ((baseline_label, m_with), (label, m_without)):
         print(f"  {lbl:22s} acc@1={m['acc1']*100:5.1f}%  "
               f"acc@10={m['acc10']*100:5.1f}%  MRR={m['mrr']:.3f}",
               file=sys.stderr)
@@ -243,8 +245,13 @@ def main():
     ap.add_argument("--n", type=int, default=1500)
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--seed", type=int, default=42)
-    ap.add_argument("--output", default="results/heading_sensitivity.json")
+    ap.add_argument("--output", default=None,
+                    help="default depends on --variant, so that one "
+                         "experiment cannot overwrite another's results")
     args = ap.parse_args()
+    if args.output is None:
+        args.output = {"headings": "results/heading_sensitivity.json",
+                       "abstract": "results/fulltext_ablation.json"}[args.variant]
 
     if args.build_sample:
         build_sample(args)
