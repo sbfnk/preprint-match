@@ -424,8 +424,9 @@ improve the embeddings, it made them dependent on the input they were tuned
 for.
 
 **This is the largest single effect measured anywhere in these experiments**,
-and it dwarfs everything the scope-versus-format work turned up: headings
--0.5pp (5b), cited journals +0.5pp (5c), full text **-9.3pp acc@10**.
+and it dwarfs everything the scope-versus-format work turned up. All three on
+acc@10: headings +0.2pp (5b), cited journals +0.5pp (5c), full text
+**-9.3pp**.
 
 **Caveat, and it cuts the same way as 5b.** Stripping the body at inference
 puts the input off-distribution, so this conflates "full text carries signal"
