@@ -30,7 +30,7 @@ Usage:
   python3 probe_heading_sensitivity.py --run \
       --input heading_sample.json --model-dir model-v5 \
       --adapter-path finetuned-specter2-v5/best_adapter \
-      --dataset labeled_dataset_v5.json --output results/heading_sensitivity.json
+      --dataset labeled_dataset_v5.json
 """
 
 import argparse
