@@ -535,4 +535,4 @@ The best method achieved 20.0% acc@1, 61.4% acc@10, and 0.332 MRR on the 316 jou
 
 </details>
 
-What mattered most, roughly in order: restricting to journals with ≥10 training papers (largest single effect), tuning classifier regularisation (C=10 vs C=1), hard negative fine-tuning, full text (vs title+abstract only). Calibration needed almost no correction.
+What mattered most, roughly in order: restricting to journals with ≥10 training papers (largest single effect), tuning classifier regularisation (C=10 vs C=1), hard negative fine-tuning, full text (vs title+abstract only). Calibration needed almost no correction. (Full text ranks last here on the pre-fine-tuning measurement; Experiment 5d puts it first for the deployed model.)

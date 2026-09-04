@@ -468,8 +468,9 @@ def _guard_full_reembed(papers, output_dir, args):
     fetched from the API carry title and abstract only, and papers.json does
     not keep the text. So deleting embeddings.npz and rebuilding from the
     current papers.json converts the whole corpus to abstract-only, which is
-    worth about -0.7pp acc@1 and -2pp acc@10 (RESULTS.md) and is invisible
-    once done. Fail loudly instead, unless the caller says they mean it.
+    worth about -7.7pp acc@1 and -9.3pp acc@10 (RESULTS.md, Experiment 5d) and
+    is invisible once done. Fail loudly instead, unless the caller says they
+    mean it.
     """
     prev = output_dir / "embeddings.npz"
     if prev.exists():
