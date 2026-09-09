@@ -156,9 +156,9 @@
         <div class="journal-row border-b border-surface-200 dark:border-surface-700 last:border-0"
              data-publisher-type="{{ pred.publisher_type }}">
         <a href="/journal/{{ pred.journal }}"
-           class="journal-row-hover flex flex-wrap sm:flex-nowrap items-center gap-x-4 gap-y-1 px-6 py-4
+           class="journal-row-hover flex flex-wrap sm:flex-nowrap items-center gap-x-4 gap-y-1 px-6 py-3
                   {% if pred.is_true %}bg-green-50/50 dark:bg-green-900/10{% endif %}
-                  hover:bg-surface-50 dark:hover:bg-surface-700 transition-all group">
+                  hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors group">
             <!-- Rank -->
             <div class="flex-shrink-0 w-8 text-center">
                 {% if pred.is_true %}
@@ -192,13 +192,13 @@
             </div>
 
             <!-- Match metrics -->
-            <div class="flex items-center gap-3 flex-shrink-0 w-full sm:w-72 pl-12 sm:pl-0">
+            <div class="flex items-center gap-3 flex-shrink-0 w-full sm:w-64 pl-12 sm:pl-0">
                 <span class="font-mono text-[11.5px] tabular-nums text-surface-400 dark:text-surface-400 w-16 text-right cursor-help
                     {% if pred.percentile >= 99 %}font-medium text-brand-500 dark:text-brand-300{% elif pred.percentile >= 95 %}font-medium text-brand-600 dark:text-brand-400{% endif %}"
                     title="This paper fits {{ pred.journal }} better than {{ pred.percentile | round(1) }}% of all preprints{% if pred.lift and pred.lift >= 1.5 %} ({{ pred.lift | lift_label }}){% endif %}">
                     {{ pred.percentile | top_pct }}
                 </span>
-                <div class="flex-1 bg-surface-200 dark:bg-surface-600 rounded-full h-2 overflow-hidden cursor-help"
+                <div class="flex-1 bg-surface-200 dark:bg-surface-600 rounded-full h-1.5 overflow-hidden cursor-help"
                      title="Relative to best match — {{ pred.probability | pct }} probability ({{ ((pred.probability / predictions[0].probability * 100) if predictions[0].probability else 0) | round(0) }}% of top)">
                     <div class="prob-bar h-full rounded-full"
                          style="width: {{ ((pred.probability / predictions[0].probability * 100) if predictions[0].probability else 0) | round(1) }}%">

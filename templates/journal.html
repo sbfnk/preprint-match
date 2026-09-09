@@ -136,13 +136,13 @@
                     </div>
 
                     <!-- Score display -->
-                    <div class="mt-3 flex items-center gap-3 max-w-sm">
+                    <div class="mt-3 flex items-center gap-3 max-w-xs">
                         <span class="font-mono text-[11.5px] tabular-nums text-surface-400 dark:text-surface-400 w-16 text-right cursor-help
                             {% if paper.percentile >= 99 %}font-medium text-brand-500 dark:text-brand-300{% elif paper.percentile >= 95 %}font-medium text-brand-600 dark:text-brand-400{% endif %}"
                             title="Percentile rank: this paper scores higher than {{ paper.percentile | round(1) }}% of all preprints for {{ journal_name }}{% if paper.lift and paper.lift >= 1.5 %} ({{ paper.lift | lift_label }}){% endif %}">
                             {{ paper.percentile | top_pct }}
                         </span>
-                        <div class="flex-1 bg-surface-200 dark:bg-surface-600 rounded-full h-2 overflow-hidden cursor-help"
+                        <div class="flex-1 bg-surface-200 dark:bg-surface-600 rounded-full h-1.5 overflow-hidden cursor-help"
                              title="Relative to best match — {{ paper.probability | pct }} probability ({{ ((paper.probability / papers[0].probability * 100) if papers[0].probability else 0) | round(0) }}% of top)">
                             <div class="prob-bar h-full rounded-full"
                                  style="width: {{ ((paper.probability / papers[0].probability * 100) if papers[0].probability else 0) | round(1) }}%">
