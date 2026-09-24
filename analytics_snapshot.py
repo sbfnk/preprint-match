@@ -238,12 +238,36 @@ def report(db_path):
     return "\n".join(out)
 
 
+def agents_report(db):
+    """Who is requesting pages, busiest first, from the aggregated agents table."""
+    conn = sqlite3.connect(db)
+    try:
+        rows = conn.execute(
+            "SELECT ip, ua, region, hits, first_seen, last_seen "
+            "FROM agents ORDER BY hits DESC LIMIT 40").fetchall()
+    except sqlite3.OperationalError:
+        return ("No `agents` table in this database. Set AGENT_LOG=1 on the app "
+                "and re-pull once it has served some traffic.")
+    if not rows:
+        return "The `agents` table is empty."
+
+    out = ["# Who is requesting pages", "",
+           "| Hits | Region | IP | First seen | Last seen | User agent |",
+           "|---:|---|---|---|---|---|"]
+    for ip, ua, region, hits, first, last in rows:
+        ua = (ua or "").replace("|", "\\|")[:110]
+        out.append(f"| {hits:,} | {region or ''} | {ip} | {first[:16]} | {last[:16]} | `{ua}` |")
+    return "\n".join(out)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--db", help="path to a local analytics.db")
     ap.add_argument("--pull", action="store_true",
                     help="fetch the live DB off the Fly volume first")
     ap.add_argument("-o", "--output", help="write report to this file (else stdout)")
+    ap.add_argument("--agents", action="store_true",
+                    help="report who is crawling (needs AGENT_LOG=1 in production)")
     args = ap.parse_args()
 
     if args.pull:
@@ -255,7 +279,7 @@ def main():
     else:
         ap.error("give --db PATH or --pull")
 
-    md = report(db)
+    md = agents_report(db) if args.agents else report(db)
     if args.output:
         with open(args.output, "w") as fh:
             fh.write(md + "\n")
