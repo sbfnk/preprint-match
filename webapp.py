@@ -477,6 +477,8 @@ def get_journal_rankings(journal_name, days=None, top_k=20):
 
 ANALYTICS_DB = os.environ.get("ANALYTICS_DB", "analytics.db")
 STATS_PASSWORD = os.environ.get("STATS_PASSWORD", "")
+# Identifies crawlers; holds IPs, so it stays off unless switched on.
+AGENT_LOG = os.environ.get("AGENT_LOG", "") == "1"
 
 
 def get_analytics_db():
@@ -506,6 +508,20 @@ def init_analytics_db():
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_hits_ts ON hits(timestamp)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_hits_path ON hits(path)")
+    # One row per (client, user-agent) rather than per request: enough to tell
+    # who is crawling without keeping a per-request trail of what anyone read.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS agents (
+            ip TEXT NOT NULL,
+            ua TEXT NOT NULL,
+            region TEXT,
+            hits INTEGER NOT NULL DEFAULT 0,
+            first_seen TEXT NOT NULL,
+            last_seen TEXT NOT NULL,
+            PRIMARY KEY (ip, ua)
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_agents_hits ON agents(hits DESC)")
     conn.commit()
     conn.close()
 
@@ -992,6 +1008,28 @@ def api_feed():
 
 # ---------- Analytics routes ----------
 
+def record_agent(ip, ua, region):
+    """Count requests per (client, user-agent) so a crawler can be identified.
+
+    Aggregated rather than logged per request, and called before the bot filter
+    so that agents the filter drops are still counted.
+    """
+    if not AGENT_LOG:
+        return
+    try:
+        conn = get_analytics_db()
+        now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute(
+            "INSERT INTO agents (ip, ua, region, hits, first_seen, last_seen) "
+            "VALUES (?, ?, ?, 1, ?, ?) "
+            "ON CONFLICT(ip, ua) DO UPDATE SET hits = hits + 1, last_seen = excluded.last_seen",
+            (ip or "unknown", (ua or "")[:500], region, now, now),
+        )
+        conn.commit()
+    except Exception:
+        pass
+
+
 @app.route("/hit", methods=["POST"])
 def hit():
     """Record a page view via navigator.sendBeacon."""
@@ -1002,7 +1040,9 @@ def hit():
         referrer = None
 
     region = request.headers.get("Fly-Region", "unknown")
-    device, browser = parse_ua(request.headers.get("User-Agent", ""))
+    ua_string = request.headers.get("User-Agent", "")
+    device, browser = parse_ua(ua_string)
+    record_agent(request.headers.get("Fly-Client-IP", ""), ua_string, region)
     if device == "bot":
         return "", 204
 
