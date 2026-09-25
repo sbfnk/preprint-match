@@ -476,9 +476,22 @@ def get_journal_rankings(journal_name, days=None, top_k=20):
 # ---------- Analytics ----------
 
 ANALYTICS_DB = os.environ.get("ANALYTICS_DB", "analytics.db")
+MAX_DAYS = 36600  # a century; beyond this a date filter is meaningless anyway
 STATS_PASSWORD = os.environ.get("STATS_PASSWORD", "")
 # Identifies crawlers; holds IPs, so it stays off unless switched on.
 AGENT_LOG = os.environ.get("AGENT_LOG", "") == "1"
+
+
+def arg_days(default=None):
+    """Read a `days` query parameter, clamped to a range timedelta can hold.
+
+    Values beyond roughly 2.7 million days overflow `datetime.timedelta` and
+    raise OverflowError, which reaches the user as a 500.
+    """
+    days = request.args.get("days", type=int, default=default)
+    if days is None:
+        return None
+    return max(0, min(days, MAX_DAYS))
 
 
 def get_analytics_db():
@@ -689,7 +702,7 @@ def journal_view(name):
             target += "?" + request.query_string.decode()
         return redirect(target, code=301)
 
-    days = request.args.get("days", type=int, default=None)
+    days = arg_days()
     top_k = min(request.args.get("top_k", type=int, default=20), 200)
 
     papers = get_journal_rankings(name, days=days, top_k=top_k)
@@ -918,7 +931,7 @@ def feed_view():
         from flask import redirect
         return redirect("/")
 
-    days = request.args.get("days", type=int, default=None)
+    days = arg_days()
     top_k = min(request.args.get("top_k", type=int, default=50), 200)
     keywords = request.args.getlist("kw") or None
     categories = request.args.getlist("cat") or None
@@ -949,7 +962,7 @@ def feed_rss():
     if not journal_names:
         abort(400)
 
-    days = request.args.get("days", type=int, default=None)
+    days = arg_days()
     top_k = min(request.args.get("top_k", type=int, default=50), 200)
     keywords = request.args.getlist("kw") or None
     categories = request.args.getlist("cat") or None
@@ -990,7 +1003,7 @@ def api_feed():
     if not journal_names and not categories and not keywords:
         return jsonify({"papers": [], "journals": []})
 
-    days = request.args.get("days", type=int, default=None)
+    days = arg_days()
     top_k = min(request.args.get("top_k", type=int, default=50), 200)
     papers, resolved = get_feed_rankings(
         journal_names, days=days, top_k=top_k, keywords=keywords,
@@ -1064,7 +1077,7 @@ def hit():
 @require_stats_auth
 def stats():
     """Analytics dashboard."""
-    days = request.args.get("days", type=int, default=30)
+    days = arg_days(30)
     cutoff = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
 
     conn = get_analytics_db()
@@ -1226,7 +1239,7 @@ def api_journal(name):
     """Get rankings for a journal."""
     if name not in DATA["journal_by_name"]:
         return jsonify({"error": "Journal not found"}), 404
-    days = request.args.get("days", type=int, default=None)
+    days = arg_days()
     top_k = min(request.args.get("top_k", type=int, default=20), 200)
     return jsonify(get_journal_rankings(name, days=days, top_k=top_k))
 
