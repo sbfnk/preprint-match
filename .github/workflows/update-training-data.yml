@@ -5,6 +5,11 @@ on:
     # First of every month at 04:00 UTC
     - cron: "0 4 1 * *"
   workflow_dispatch:
+    inputs:
+      start_date:
+        description: "Earliest publication date to fetch (YYYY-MM-DD); default is a year back"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -51,10 +56,17 @@ jobs:
           "
 
       - name: Fetch preprints and look up new Crossref labels
+        env:
+          START_DATE: ${{ inputs.start_date }}
         run: |
+          # Existing records come from the release, so only recent publications
+          # need fetching; a full read from 2019 takes longer than the 6h job
+          # limit. The window is a year because the API adds journal links
+          # months after publication.
+          START_DATE="${START_DATE:-$(date -d '365 days ago' +%Y-%m-%d)}"
           python3 extract_labeled_data.py \
             --server both \
-            --start-date 2019-06-01 \
+            --start-date "$START_DATE" \
             --end-date $(date +%Y-%m-%d) \
             --output labeled_dataset.json \
             --progress-file labeled_progress.jsonl
