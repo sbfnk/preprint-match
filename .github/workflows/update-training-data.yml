@@ -117,5 +117,4 @@ jobs:
         run: |
           gh issue create \
             --title "Training data updated — retrain model" \
-            --body "The monthly training data update added >1000 new labelled papers. Consider retraining the model to incorporate them. Run the retrain workflow manually or use a commercial GPU provider." \
-            --label "automation"
+            --body "The monthly training data update added >1000 new labelled papers. Consider retraining the model to incorporate them. Run the retrain workflow manually or use a commercial GPU provider."
