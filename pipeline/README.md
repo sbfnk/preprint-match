@@ -427,8 +427,10 @@ Full text reaches the pipeline only through a bulk XML backfill
 (`add_fulltext.py` against the local `xml/` corpus). Preprints fetched from
 the medRxiv API carry title and abstract only, and `papers.json` does not
 retain the text, so every paper added by the daily refresh is embedded from
-title+abstract. That is worth about -0.7pp acc@1 and -2pp acc@10 relative to
-full text (see RESULTS.md, Experiment 1).
+title+abstract. That is worth about -7.7pp acc@1 and -9.3pp acc@10 relative
+to full text (see RESULTS.md, Experiment 5d, measured on the deployed model;
+Experiment 1's much smaller -0.7pp/-2pp was measured before fine-tuning and
+does not apply here).
 
 `embeddings.npz` therefore carries a `used_fulltext` boolean array alongside
 the vectors, recording how each row was built, and precompute prints coverage
