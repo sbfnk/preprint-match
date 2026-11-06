@@ -79,22 +79,10 @@ jobs:
           # manual retraining runs.
           echo "Skipping full text extraction (requires XML archive)"
 
-      - name: Upload updated dataset
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          NEW_COUNT=$(python3 -c "import json; print(len(json.load(open('labeled_dataset.json'))))")
-          echo "Dataset now has ${NEW_COUNT} labelled records"
-
-          gzip -c labeled_dataset.json > /tmp/labeled_dataset.json.gz
-          gh release upload "data-latest" --clobber /tmp/labeled_dataset.json.gz
-
-          echo "Uploaded to data-latest release"
-
       - name: Check if retraining is needed
         id: check
         run: |
-          # Compare old vs new record count
+          # Runs before the upload so the release still holds last month's dataset
           OLD=$(gh release download "data-latest" -p "labeled_dataset.json.gz" -D /tmp/old 2>/dev/null && \
                gunzip -c /tmp/old/labeled_dataset.json.gz | python3 -c "import json,sys; print(len(json.load(sys.stdin)))" || echo "0")
           NEW=$(python3 -c "import json; print(len(json.load(open('labeled_dataset.json'))))")
@@ -109,6 +97,18 @@ jobs:
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload updated dataset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NEW_COUNT=$(python3 -c "import json; print(len(json.load(open('labeled_dataset.json'))))")
+          echo "Dataset now has ${NEW_COUNT} labelled records"
+
+          gzip -c labeled_dataset.json > /tmp/labeled_dataset.json.gz
+          gh release upload "data-latest" --clobber /tmp/labeled_dataset.json.gz
+
+          echo "Uploaded to data-latest release"
 
       - name: Create issue if retraining needed
         if: steps.check.outputs.retrain == 'true'
