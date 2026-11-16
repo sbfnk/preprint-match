@@ -148,6 +148,14 @@ def report(db_path):
     p(f"- **{this_week:,}** hits in the last 7 days — {change}")
     p(f"- Previous three 7-day windows: {prev_week:,} → {last_week:,} → **{this_week:,}**")
     p(f"- Daily average (last 7d): **{this_week / 7:.0f}**/day")
+    # Databases from before click tracking have no clicks table.
+    if q(conn, "SELECT 1 FROM sqlite_master WHERE type='table' AND name='clicks'"):
+        since7 = (now - timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
+        clicks7, clicks_all = q(conn,
+            "SELECT SUM(timestamp >= ?), COUNT(*) FROM clicks WHERE target = 'sponsor'",
+            (since7,))[0]
+        p(f"- Sponsor-link clicks: **{clicks7 or 0}** in the last 7 days, "
+          f"{clicks_all} since tracking began")
     p("")
 
     # --- Daily trend, last 14 days ---
