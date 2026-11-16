@@ -535,6 +535,15 @@ def init_analytics_db():
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_agents_hits ON agents(hits DESC)")
+    # Clicks on outbound links, kept apart from hits so they never count as
+    # page views.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS clicks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            target TEXT NOT NULL
+        )
+    """)
     conn.commit()
     conn.close()
 
@@ -1045,7 +1054,7 @@ def record_agent(ip, ua, region):
 
 @app.route("/hit", methods=["POST"])
 def hit():
-    """Record a page view via navigator.sendBeacon."""
+    """Record a page view, or an outbound click (path /out/<target>), via navigator.sendBeacon."""
     data = request.get_json(silent=True, force=True) or {}
     path = (data.get("p") or "")[:500]
     referrer = (data.get("r") or "")[:500] or None
@@ -1059,14 +1068,18 @@ def hit():
     if device == "bot":
         return "", 204
 
+    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
     try:
         conn = get_analytics_db()
-        conn.execute(
-            "INSERT INTO hits (timestamp, path, referrer, region, device, browser) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-             path, referrer, region, device, browser),
-        )
+        if path.startswith("/out/"):
+            conn.execute("INSERT INTO clicks (timestamp, target) VALUES (?, ?)",
+                         (now, path[len("/out/"):]))
+        else:
+            conn.execute(
+                "INSERT INTO hits (timestamp, path, referrer, region, device, browser) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (now, path, referrer, region, device, browser),
+            )
         conn.commit()
     except Exception:
         pass
