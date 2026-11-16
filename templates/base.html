@@ -181,6 +181,15 @@
             {type: 'application/json'}
         ));
     }
+    // Page views alone cannot show whether visitors reach the sponsor page.
+    document.addEventListener('click', (e) => {
+        if (navigator.sendBeacon && e.target.closest('a[href*="github.com/sponsors"]')) {
+            navigator.sendBeacon('/hit', new Blob(
+                [JSON.stringify({p: '/out/sponsor', r: ''})],
+                {type: 'application/json'}
+            ));
+        }
+    });
     </script>
 </body>
 </html>
